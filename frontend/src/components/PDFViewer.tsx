@@ -2,110 +2,125 @@ import { useState } from 'react';
 import { Document, Page, pdfjs } from 'react-pdf';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
-import { ZoomIn, ZoomOut, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ZoomIn, ZoomOut, Maximize, MousePointer2, Hand } from 'lucide-react';
+import { TransformWrapper, TransformComponent } from 'react-zoom-pan-pinch';
 
 // Setup worker
 pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.mjs`;
 
 interface PDFViewerProps {
   url: string;
-  onPageChange?: (page: number) => void;
   onClick?: (e: React.MouseEvent, pageNumber: number) => void;
   children?: React.ReactNode; // For overlays
 }
 
-export default function PDFViewer({ url, onPageChange, onClick, children }: PDFViewerProps) {
-  const [numPages, setNumPages] = useState<number>(0);
-  const [pageNumber, setPageNumber] = useState<number>(1);
-  const [scale, setScale] = useState<number>(1.2);
 
-  function onDocumentLoadSuccess({ numPages }: { numPages: number }) {
-    setNumPages(numPages);
-  }
+export default function PDFViewer({ url, onClick, children }: PDFViewerProps) {
+  const [isPanningMode, setIsPanningMode] = useState(true);
 
-  function changePage(offset: number) {
-    const newPageNumber = pageNumber + offset;
-    if (newPageNumber >= 1 && newPageNumber <= numPages) {
-      setPageNumber(newPageNumber);
-      if (onPageChange) onPageChange(newPageNumber);
-    }
-  }
-
-  function changeScale(offset: number) {
-    setScale(prev => Math.max(0.5, Math.min(3, prev + offset)));
-  }
+  // We only render page 1 for architecture plans
+  const pageNumber = 1;
 
   return (
-    <div className="flex flex-col h-full bg-gray-100">
-      <div className="flex items-center justify-between p-4 bg-white shadow z-10">
-        <div className="flex items-center space-x-4">
-          <button
-            onClick={() => changePage(-1)}
-            disabled={pageNumber <= 1}
-            className="p-2 rounded hover:bg-gray-100 disabled:opacity-50"
-          >
-            <ChevronLeft size={20} />
-          </button>
-          <span className="text-sm font-medium">
-            Seite {pageNumber} von {numPages || '--'}
-          </span>
-          <button
-            onClick={() => changePage(1)}
-            disabled={pageNumber >= numPages}
-            className="p-2 rounded hover:bg-gray-100 disabled:opacity-50"
-          >
-            <ChevronRight size={20} />
-          </button>
-        </div>
-
-        <div className="flex items-center space-x-2">
-          <button
-            onClick={() => changeScale(-0.2)}
-            className="p-2 rounded hover:bg-gray-100"
-            title="Verkleinern"
-          >
-            <ZoomOut size={20} />
-          </button>
-          <span className="text-sm w-16 text-center">{Math.round(scale * 100)}%</span>
-          <button
-            onClick={() => changeScale(0.2)}
-            className="p-2 rounded hover:bg-gray-100"
-            title="Vergrößern"
-          >
-            <ZoomIn size={20} />
-          </button>
-        </div>
-      </div>
-
-      <div className="flex-1 overflow-auto p-4 flex justify-center relative">
-        <div className="relative shadow-lg bg-white">
-          <Document
-            file={url}
-            onLoadSuccess={onDocumentLoadSuccess}
-            loading={
-              <div className="p-10 flex justify-center items-center h-full">
-                <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-500"></div>
+    <div className="flex flex-col h-full bg-gray-900 w-full overflow-hidden relative select-none">
+      <TransformWrapper
+        initialScale={1}
+        minScale={0.1}
+        maxScale={10}
+        centerOnInit={true}
+        wheel={{ step: 0.1 }} // Smooth mouse wheel zoom
+        panning={{ disabled: !isPanningMode }}
+        doubleClick={{ disabled: true }} // Disable double click zoom so it doesn't interfere with quick clicks
+      >
+        {({ zoomIn, zoomOut, resetTransform }) => (
+          <>
+            <div className="absolute top-4 left-1/2 transform -translate-x-1/2 flex items-center space-x-4 p-2 bg-white rounded-lg shadow-lg z-20">
+              <div className="flex items-center border-r pr-4 space-x-2">
+                 <button
+                  onClick={() => setIsPanningMode(true)}
+                  className={`p-2 rounded flex items-center ${isPanningMode ? 'bg-blue-100 text-blue-600' : 'hover:bg-gray-100 text-gray-600'}`}
+                  title="Verschieben (Pan)"
+                >
+                  <Hand size={20} />
+                </button>
+                <button
+                  onClick={() => setIsPanningMode(false)}
+                  className={`p-2 rounded flex items-center ${!isPanningMode ? 'bg-blue-100 text-blue-600' : 'hover:bg-gray-100 text-gray-600'}`}
+                  title="Markieren (Klick für Pendenz)"
+                >
+                  <MousePointer2 size={20} />
+                </button>
               </div>
-            }
-            error={
-              <div className="p-10 text-red-500">Fehler beim Laden des PDF-Dokuments.</div>
-            }
-          >
-            <div
-              className="relative"
-              onClick={(e) => onClick && onClick(e, pageNumber)}
-            >
-              <Page
-                pageNumber={pageNumber}
-                scale={scale}
-                renderAnnotationLayer={false}
-                renderTextLayer={true}
-              />
-              {children}
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={() => zoomOut()}
+                  className="p-2 rounded hover:bg-gray-100 text-gray-600"
+                  title="Verkleinern"
+                >
+                  <ZoomOut size={20} />
+                </button>
+                <button
+                  onClick={() => resetTransform()}
+                  className="p-2 rounded hover:bg-gray-100 text-gray-600"
+                  title="Ansicht zentrieren"
+                >
+                  <Maximize size={20} />
+                </button>
+                <button
+                  onClick={() => zoomIn()}
+                  className="p-2 rounded hover:bg-gray-100 text-gray-600"
+                  title="Vergrößern"
+                >
+                  <ZoomIn size={20} />
+                </button>
+              </div>
             </div>
-          </Document>
-        </div>
-      </div>
+
+            <div className="flex-1 w-full h-full cursor-default" style={{ cursor: isPanningMode ? 'grab' : 'crosshair' }}>
+              <TransformComponent wrapperStyle={{ width: "100%", height: "100%" }}>
+                <div
+                  className="relative bg-white shadow-2xl"
+                  onClick={(e) => {
+                    // Only trigger click if we are NOT in panning mode
+                    if (!isPanningMode && onClick) {
+                      onClick(e, pageNumber);
+                    }
+                  }}
+                  onMouseDown={(e) => {
+                     if (isPanningMode) e.currentTarget.style.cursor = 'grabbing';
+                  }}
+                  onMouseUp={(e) => {
+                     if (isPanningMode) e.currentTarget.style.cursor = 'grab';
+                  }}
+                >
+                  <Document
+                    file={url}
+                    loading={
+                      <div className="p-20 flex justify-center items-center w-[800px] h-[600px]">
+                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+                      </div>
+                    }
+                    error={
+                      <div className="p-20 text-red-500">Fehler beim Laden des PDF-Dokuments.</div>
+                    }
+                  >
+                    {/* Render standard scale 2 to get a very high res crisp canvas,
+                        the user zooms in and out via CSS transform (react-zoom-pan-pinch) */}
+                    <Page
+                      pageNumber={pageNumber}
+                      scale={2}
+                      renderAnnotationLayer={false}
+                      renderTextLayer={false} // Disable text layer for better performance on large architectural plans
+                      className="pdf-page-container"
+                    />
+                    {children}
+                  </Document>
+                </div>
+              </TransformComponent>
+            </div>
+          </>
+        )}
+      </TransformWrapper>
     </div>
   );
 }

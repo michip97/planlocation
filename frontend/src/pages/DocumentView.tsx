@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState } from 'react';
 import PDFViewer from '../components/PDFViewer';
 import TaskMarker from '../components/TaskMarker';
 import TaskSidebar from '../components/TaskSidebar';
@@ -8,17 +8,16 @@ import type { Task } from '../types';
 export default function DocumentView() {
   const [tasks, setTasks] = useState<Task[]>(mockTasks);
   const [activeTask, setActiveTask] = useState<Task | null>(null);
-  const [currentPage, setCurrentPage] = useState<number>(1);
-  const viewerRef = useRef<HTMLDivElement>(null);
 
-  const handlePageChange = (page: number) => {
-    setCurrentPage(page);
-    setActiveTask(null);
-  };
+  // Hardcoded to 1 since we only show the first page for architectural plans
+  const currentPage = 1;
 
   const handlePdfClick = (e: React.MouseEvent, pageNumber: number) => {
-    // Determine the position clicked within the PDF page
+    // Determine the position clicked within the PDF page container
+    // Because of react-zoom-pan-pinch, the event currentTarget is the inner transformed div
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+
+    // We calculate normalized coordinates based on the bounding rect
     const x = (e.clientX - rect.left) / rect.width;
     const y = (e.clientY - rect.top) / rect.height;
 
@@ -46,18 +45,17 @@ export default function DocumentView() {
 
   return (
     <div className="flex h-screen bg-gray-100 overflow-hidden relative">
-      <div className="flex-1 flex flex-col relative" ref={viewerRef}>
-        <div className="bg-blue-800 text-white p-4 shadow-md flex justify-between items-center z-20">
-          <h1 className="font-bold text-xl">Projekt: Musterbau</h1>
-          <div className="text-sm bg-blue-700 px-3 py-1 rounded">
-            Dokument: sample.pdf
+      <div className="flex-1 flex flex-col relative z-0">
+        <div className="bg-slate-800 text-white p-4 shadow-md flex justify-between items-center z-30 relative">
+          <h1 className="font-bold text-xl">Plan: Erdgeschoss Architektur</h1>
+          <div className="text-sm bg-slate-700 px-3 py-1 rounded border border-slate-600">
+            eg_plan_v2.pdf
           </div>
         </div>
 
-        <div className="flex-1 relative">
+        <div className="flex-1 relative overflow-hidden">
           <PDFViewer
             url="/sample.pdf"
-            onPageChange={handlePageChange}
             onClick={handlePdfClick}
           >
             {/* Render tasks for the current page */}

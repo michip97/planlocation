@@ -18,7 +18,8 @@
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-pdf": "^10.0.0",
-    "react-router-dom": "^7.18.4"
+    "react-router-dom": "^7.18.4",
+    "react-zoom-pan-pinch": "^4.2.0"
   },
   "devDependencies": {
     "@types/node": "^24.13.3",
