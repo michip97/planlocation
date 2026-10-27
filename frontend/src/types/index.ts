@@ -6,6 +6,34 @@ export interface Position {
   y: number; // normalized coordinate (0-1)
 }
 
+export interface User {
+  id: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  role: string;
+  tenantId: string;
+}
+
+export interface Document {
+  id: string;
+  filename: string;
+  size: number;
+  mimeType: string;
+  createdAt: string;
+  projectId: string;
+}
+
+export interface Project {
+  id: string;
+  name: string;
+  description: string | null;
+  createdAt: string;
+  status: string;
+  documents: Document[];
+  tasks: any[];
+}
+
 export interface Task {
   id: string;
   title: string;

@@ -6,3 +6,6 @@ backend/dist/
 frontend/dist/
 build/
 .env
+uploads/
+backend/prisma/dev.db
+backend/prisma/dev.db
