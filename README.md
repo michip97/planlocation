@@ -35,8 +35,17 @@ PlanSync ist eine Offline-First Progressive Web App (PWA) für Architektur- und 
 `npm install`
 
 ### 2. Datenbank (Docker)
-Um lokal eine Datenbank aufzusetzen, kannst du die beiliegende `docker-compose.yml` nutzen:
-`docker compose up -d db`
+Kopiere zuerst die Umgebungsvariablen im `backend` Ordner:
+```bash
+cd backend
+cp .env.example .env
+```
+Um lokal eine Datenbank aufzusetzen, kannst du die beiliegende `docker-compose.yml` aus dem Hauptverzeichnis nutzen. Wichtig: Du musst den Container zwingend neu starten, wenn sich Port-Konfigurationen geändert haben.
+```bash
+cd ..
+docker compose down
+docker compose up -d db
+```
 
 ### 3. Datenbank initialisieren (Backend)
 Aus dem `/backend` Ordner:
@@ -52,6 +61,22 @@ Du benötigst zwei Terminal-Fenster:
 **Terminal 2 (Frontend PWA):**
 `cd frontend`
 `npm run dev`
+
+### 5. App Testen
+Öffne `http://localhost:5173/login`. Da noch keine Benutzer existieren, kannst du über die API direkt einen Tenant & Admin erstellen.
+Sende einfach diesen cURL Befehl an das laufende Backend:
+```bash
+curl -X POST http://localhost:3000/api/auth/register \
+-H "Content-Type: application/json" \
+-d '{
+  "email": "admin@musterbau.ch",
+  "password": "SecurePassword123",
+  "firstName": "Max",
+  "lastName": "Muster",
+  "tenantName": "Musterbau AG"
+}'
+```
+Melde dich anschließend mit `admin@musterbau.ch` und `SecurePassword123` an.
 
 ---
 
