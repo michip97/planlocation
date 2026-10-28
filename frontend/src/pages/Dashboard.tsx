@@ -52,7 +52,7 @@ export default function Dashboard() {
   const fetchProjects = async () => {
     if (navigator.onLine) {
         try {
-          const response = await axios.get('http://localhost:3000/api/projects', {
+          const response = await axios.get('/api/projects', {
             headers: { Authorization: `Bearer ${token}` }
           });
           setProjects(response.data);
@@ -97,7 +97,7 @@ export default function Dashboard() {
     if (!name) return;
 
     try {
-      await axios.post('http://localhost:3000/api/projects',
+      await axios.post('/api/projects',
         { name, description: 'Neues Architekturprojekt' },
         { headers: { Authorization: `Bearer ${token}` }}
       );
@@ -124,7 +124,7 @@ export default function Dashboard() {
     formData.append('file', file);
 
     try {
-      await axios.post(`http://localhost:3000/api/documents/project/${projectId}`, formData, {
+      await axios.post(`/api/documents/project/${projectId}`, formData, {
         headers: {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'multipart/form-data'

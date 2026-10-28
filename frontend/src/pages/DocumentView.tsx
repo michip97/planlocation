@@ -50,7 +50,7 @@ export default function DocumentView() {
 
     if (navigator.onLine && token) {
       try {
-        const response = await axios.get(`http://localhost:3000/api/tasks/${projectId}/${documentId}`, {
+        const response = await axios.get(`/api/tasks/${projectId}/${documentId}`, {
           headers: { Authorization: `Bearer ${token}` }
         });
         const fetchedTasks = response.data;
@@ -78,7 +78,7 @@ export default function DocumentView() {
     const fetchDetails = async () => {
       if (navigator.onLine) {
         try {
-          const response = await axios.get('http://localhost:3000/api/projects', {
+          const response = await axios.get('/api/projects', {
             headers: { Authorization: `Bearer ${token}` }
           });
           const proj = response.data.find((p: Project) => p.id === projectId);
@@ -110,7 +110,7 @@ export default function DocumentView() {
     const fetchPdfBlob = async () => {
       if (navigator.onLine) {
         try {
-          const res = await axios.get(`http://localhost:3000/api/documents/${documentId}/file`, {
+          const res = await axios.get(`/api/documents/${documentId}/file`, {
             headers: { Authorization: `Bearer ${token}` },
             responseType: 'blob'
           });
@@ -178,7 +178,7 @@ export default function DocumentView() {
 
     if (isOnline && token) {
       try {
-        await axios.post(`http://localhost:3000/api/tasks/${projectId}/${documentId}`, apiPayload, {
+        await axios.post(`/api/tasks/${projectId}/${documentId}`, apiPayload, {
           headers: { Authorization: `Bearer ${token}` }
         });
       } catch (error) {
@@ -206,7 +206,7 @@ export default function DocumentView() {
 
     if (isOnline && token) {
       try {
-        await axios.put(`http://localhost:3000/api/tasks/${updatedTask.id}`, updatedTask, {
+        await axios.put(`/api/tasks/${updatedTask.id}`, updatedTask, {
           headers: { Authorization: `Bearer ${token}` }
         });
       } catch (error) {

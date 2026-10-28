@@ -1,0 +1,16 @@
+services:
+  plansync:
+    build: .
+    ports:
+      - "3000:3000"
+    volumes:
+      - plansync_db:/app/backend/prisma
+      - plansync_uploads:/app/backend/uploads
+    environment:
+      - NODE_ENV=production
+      - JWT_SECRET=production_super_secret_change_me_123!
+      - PORT=3000
+
+volumes:
+  plansync_db:
+  plansync_uploads:

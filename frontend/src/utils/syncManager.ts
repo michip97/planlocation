@@ -44,20 +44,20 @@ export const processSyncQueue = async () => {
       if (action.type === 'CREATE_TASK') {
         const payload: Task = action.payload;
         await axios.post(
-          `http://localhost:3000/api/tasks/${payload.projectId}/${payload.documentId}`,
+          `/api/tasks/${payload.projectId}/${payload.documentId}`,
           payload,
           { headers: { Authorization: `Bearer ${token}` } }
         );
       } else if (action.type === 'UPDATE_TASK') {
         const payload = action.payload;
         await axios.put(
-          `http://localhost:3000/api/tasks/${payload.id}`,
+          `/api/tasks/${payload.id}`,
           payload,
           { headers: { Authorization: `Bearer ${token}` } }
         );
       } else if (action.type === 'DELETE_TASK') {
         await axios.delete(
-          `http://localhost:3000/api/tasks/${action.payload.id}`,
+          `/api/tasks/${action.payload.id}`,
           { headers: { Authorization: `Bearer ${token}` } }
         );
       }

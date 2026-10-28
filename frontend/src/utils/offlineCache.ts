@@ -88,14 +88,14 @@ export const downloadProjectForOffline = async (
       const baseProgress = 10 + (i * progressPerDoc);
 
       // Fetch Tasks
-      const tasksRes = await axios.get(`http://localhost:3000/api/tasks/${project.id}/${doc.id}`, {
+      const tasksRes = await axios.get(`/api/tasks/${project.id}/${doc.id}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       await cacheTasks(project.id, doc.id, tasksRes.data);
       onProgress(baseProgress + (progressPerDoc * 0.2)); // Tasks downloaded
 
       // Fetch PDF Blob with onDownloadProgress for accurate tracking of large files
-      const pdfRes = await axios.get(`http://localhost:3000/api/documents/${doc.id}/file`, {
+      const pdfRes = await axios.get(`/api/documents/${doc.id}/file`, {
         headers: { Authorization: `Bearer ${token}` },
         responseType: 'blob',
         onDownloadProgress: (progressEvent) => {

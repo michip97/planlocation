@@ -44,7 +44,7 @@ export default function TasksList() {
           if (filterStatus) params.append('status', filterStatus);
           if (filterPriority) params.append('priority', filterPriority);
 
-          const response = await axios.get(`http://localhost:3000/api/tasks?${params.toString()}`, {
+          const response = await axios.get(`/api/tasks?${params.toString()}`, {
             headers: { Authorization: `Bearer ${token}` }
           });
           setTasks(response.data);

@@ -5,6 +5,14 @@ import { VitePWA } from 'vite-plugin-pwa'
 
 // https://vite.dev/config/
 export default defineConfig({
+  server: {
+    proxy: {
+      '/api': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+      }
+    }
+  },
   plugins: [
     tailwindcss(),
     react(),
@@ -33,9 +41,7 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,pdf,mjs}'],
-        maximumFileSizeToCacheInBytes: 50 * 1024 * 1024, // 50MB (allow caching the sample.pdf and large worker scripts)
-        // Ensure network requests to our API are NOT cached by the service worker,
-        // because we handle our own offline sync logic for the API via localforage
+        maximumFileSizeToCacheInBytes: 50 * 1024 * 1024,
         navigateFallbackDenylist: [/^\/api/],
         runtimeCaching: [
           {
@@ -45,7 +51,7 @@ export default defineConfig({
               cacheName: 'google-fonts-cache',
               expiration: {
                 maxEntries: 10,
-                maxAgeSeconds: 60 * 60 * 24 * 365 // 1 year
+                maxAgeSeconds: 60 * 60 * 24 * 365
               },
               cacheableResponse: {
                 statuses: [0, 200]
