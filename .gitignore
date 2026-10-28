@@ -9,3 +9,4 @@ build/
 uploads/
 backend/prisma/dev.db
 backend/prisma/dev.db
+backend/server.log
