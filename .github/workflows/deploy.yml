@@ -70,12 +70,13 @@ jobs:
 
             # Export environment variables for docker-compose
             export REPO="$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')"
-            export POSTGRES_PASSWORD="${{ secrets.DB_PASSWORD }}"
+            export DATABASE_URL="${{ secrets.DATABASE_URL }}"
             export JWT_SECRET="${{ secrets.JWT_SECRET }}"
             export DOMAIN="${{ secrets.DOMAIN }}"
 
-            # Ensure the external network exists (for traefik/nginx-proxy)
+            # Ensure the external networks exist (for traefik and shared DB)
             docker network inspect webproxy >/dev/null 2>&1 || docker network create webproxy
+            docker network inspect postgres_network >/dev/null 2>&1 || docker network create postgres_network
 
             # Pull new images and recreate containers
             docker compose -f docker-compose.prod.yml pull

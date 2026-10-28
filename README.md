@@ -17,12 +17,12 @@ PlanSync ist eine Offline-First Progressive Web App (PWA) für Architektur- und 
 
 - **Frontend:** React, TypeScript, Vite, Tailwind CSS v4, React Router, Lucide Icons, Axios, Localforage, Playwright (für E2E Testing).
 - **Backend:** Node.js, Express, TypeScript.
-- **Datenbank:** SQLite (via Prisma ORM). SQLite wurde für das lokale Setup und Docker-Deployment gewählt, um komplexe Volumes und Berechtigungsprobleme zu vermeiden. Ein Wechsel auf PostgreSQL in Produktion erfordert lediglich eine Anpassung der `provider` Zeile in der `schema.prisma`.
+- **Datenbank:** PostgreSQL (via Prisma ORM).
 - **Sicherheit:** JWT für die Authentifizierung, `bcryptjs` für sicheres Passwort-Hashing, strikte Überprüfung des `tenantId` in jeder API-Route.
 
 ---
 
-## 🚀 Lokales Setup für die Entwicklung (Ohne Docker)
+## 🚀 Lokales Setup für die Entwicklung
 
 ### 1. Repository klonen und installieren
 `git clone <repository-url>`
@@ -34,85 +34,32 @@ PlanSync ist eine Offline-First Progressive Web App (PWA) für Architektur- und 
 `cd ../backend`
 `npm install`
 
-### 2. Datenbank initialisieren (Backend)
-Aus dem `/backend` Ordner:
-`npx prisma migrate dev --name init`
+### 2. Datenbank (Docker)
+Um lokal eine Datenbank aufzusetzen, kannst du die beiliegende `docker-compose.yml` nutzen:
+`docker compose up -d db`
 
-### 3. Server starten
+### 3. Datenbank initialisieren (Backend)
+Aus dem `/backend` Ordner:
+`npx prisma db push`
+
+### 4. Server starten
 Du benötigst zwei Terminal-Fenster:
 
 **Terminal 1 (Backend API):**
 `cd backend`
-`npm start`
+`npm run dev`
 
 **Terminal 2 (Frontend PWA):**
 `cd frontend`
-`npm start`
-
-### 4. App Testen
-Öffne `http://localhost:5173/login`. Da noch keine Benutzer existieren, kannst du über die API direkt einen Tenant & Admin erstellen.
-Sende einfach diesen cURL Befehl an das laufende Backend:
-```bash
-curl -X POST http://localhost:3000/api/auth/register \
--H "Content-Type: application/json" \
--d '{
-  "email": "admin@musterbau.ch",
-  "password": "SecurePassword123",
-  "firstName": "Max",
-  "lastName": "Muster",
-  "tenantName": "Musterbau AG"
-}'
-```
-Melde dich anschließend mit `admin@musterbau.ch` und `SecurePassword123` an.
+`npm run dev`
 
 ---
 
-## 🐳 Deployment via Docker (Produktion / Komplettes Setup)
+## 🗄️ CI/CD Deployment mit GitHub Container Registry (GHCR) & geteilter Datenbank
 
-Für ein einfaches und nahtloses Deployment (z.B. auf einer VM) wurde ein Docker-Setup erstellt. Das Backend serviert in diesem Modus die kompilierten Frontend-Dateien direkt.
+Die App ist für das automatische Deployment auf einen VPS optimiert und nutzt GitHub Actions, um das Docker Image zu bauen und auf der GitHub Container Registry (GHCR) abzulegen.
 
-### Starten mit Docker Compose
-Wechsle in das Hauptverzeichnis des Repositories:
-`docker compose up --build -d`
-
-Die App ist nun unter `http://localhost:3000` erreichbar.
-Alle hochgeladenen PDF-Dateien und die SQLite-Datenbank werden dauerhaft gespeichert.
-
-## Architektur & Designentscheidungen
-* **Tenant-Isolation:** Jeder Benutzer hat eine `tenantId`. In den Prisma-Queries wird dies stets forciert, was "Tenant-Bleeding" unmöglich macht.
-* **Offline-Queue:** Wenn der User offline eine Pendenz ändert, wird die Mutations-Payload in IndexedDB abgelegt. Ein EventListener triggert die asynchrone Abarbeitung der Queue, sobald das Gerät wieder online ist. Zur Fehlervermeidung werden Tasks schon im Frontend mit UUIDs versehen (optimistisches UI), sodass der Server keine Doppel-Einträge erstellt.
-* **Große PDF-Pläne:** `react-zoom-pan-pinch` skaliert nur das Canvas (via CSS Transform), was für Architekturpläne viel performanter ist als wiederholtes PDF-Neu-Rendern beim Heranzoomen. Der PDF.js-Worker liegt lokal im Build, um echte Offline-Nutzung zu garantieren.
-
----
-
-## 🚀 CI/CD & VPS Deployment (Produktion)
-
-Das Projekt ist vollständig für das automatische Deployment auf einem Virtual Private Server (VPS) via GitHub Actions vorbereitet. Es kann problemlos parallel zu anderen Projekten (wie Homepages) laufen.
-
-Das Setup verwendet `docker-compose.prod.yml`, welches die Anwendung in ein externes Docker-Netzwerk (`webproxy`) einhängt und Labels bereitstellt, die von Reverse Proxies (wie **Traefik** oder **Nginx-Proxy**) automatisch erkannt werden.
-
-### 1. Vorbereitungen auf GitHub
-Damit die GitHub Action funktioniert, musst du in deinem Repository unter `Settings` > `Secrets and variables` > `Actions` folgende **Repository Secrets** anlegen:
-
-- `VPS_HOST`: Die IP-Adresse oder Domain deines VPS.
-- `VPS_USERNAME`: Der SSH-Benutzername (z.B. `root` oder `ubuntu`).
-- `VPS_SSH_KEY`: Ein privater SSH-Key, mit dem GitHub Actions sich passwortlos auf dem Server einloggen darf.
-
-### 2. Konfiguration anpassen (Optional)
-Die `docker-compose.prod.yml` ist aktuell so konfiguriert, dass sie auf den Hostnamen **`planlocationtest.michaelportmann.ch`** reagiert.
-Wenn sich dieser ändert, passe einfach die Zeilen mit `VIRTUAL_HOST` und `LETSENCRYPT_HOST` (oder die Traefik-Labels) in der Datei an.
-
-### 3. Deployment
-Sobald du Code auf den `main` Branch pushst, passiert Folgendes automatisch:
-1. Die Dateien werden sicher per `rsync` auf den VPS unter `/opt/plansync` kopiert (Uploads und die Datenbank werden natürlich nicht überschrieben).
-2. Auf dem Server wird der Container neu gebaut (`docker compose --build`).
-3. Die App startet im Hintergrund neu (`-d`), ohne Ausfallzeiten.
-
----
-
-## 🗄️ CI/CD Deployment mit GitHub Container Registry (GHCR) & PostgreSQL
-
-Die App ist für das automatische Deployment auf einen VPS optimiert und nutzt GitHub Actions, um das Docker Image zu bauen und auf der GitHub Container Registry (GHCR) abzulegen. Der Server zieht sich dieses Image anschließend.
+**Wichtig:** In diesem Setup wird davon ausgegangen, dass du auf deinem VPS bereits eine geteilte PostgreSQL-Instanz laufen hast, die auf dem Docker-Netzwerk `postgres_network` erreichbar ist (Ressourcenschonung).
 
 ### Voraussetzungen (GitHub Secrets)
 Folgende Secrets müssen in deinem GitHub Repository (`Settings > Secrets and variables > Actions`) hinterlegt werden:
@@ -120,7 +67,7 @@ Folgende Secrets müssen in deinem GitHub Repository (`Settings > Secrets and va
 - `VPS_HOST`: Die IP-Adresse oder der Hostname deines Servers.
 - `VPS_USERNAME`: Der SSH-User (z.B. `root`).
 - `VPS_SSH_KEY`: Dein privater SSH-Schlüssel für den Serverzugriff.
-- `DB_PASSWORD`: Ein starkes Passwort für die PostgreSQL Datenbank auf dem Server.
+- `DATABASE_URL`: Der vollständige Connection String zu deiner geteilten Datenbank (z.B. `postgresql://user:pass@db_container_name:5432/plansync_db?schema=public`).
 - `JWT_SECRET`: Ein starker, zufälliger String für die Ausstellung von Login-Tokens.
 - `DOMAIN`: Deine Zieldomain (z.B. `planlocationtest.michaelportmann.ch`). Dies konfiguriert den Reverse Proxy (Traefik).
 
