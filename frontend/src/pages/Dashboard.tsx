@@ -2,7 +2,9 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import type { Project } from '../types';
-import { FileText, Plus, LogOut, UploadCloud, ChevronRight, Download, Trash2, CheckCircle2, Cloud } from 'lucide-react';
+import { Plus, UploadCloud, ChevronRight, Download, Trash2, CheckCircle2, Cloud, FileText, QrCode } from 'lucide-react';
+import QRCodeModal from '../components/QRCodeModal';
+import Navbar from '../components/Navbar';
 import {
   getOfflineProjectsRegistry,
   downloadProjectForOffline,
@@ -15,10 +17,10 @@ export default function Dashboard() {
   const [offlineRegistry, setOfflineRegistry] = useState<string[]>([]);
   const [downloadingProjects, setDownloadingProjects] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
+  const [qrModal, setQrModal] = useState<{url: string, title: string} | null>(null);
   const [isOnline, setIsOnline] = useState<boolean>(navigator.onLine);
   const navigate = useNavigate();
 
-  const user = JSON.parse(localStorage.getItem('user') || '{}');
   const token = localStorage.getItem('token');
 
   // Handle Online/Offline Status
@@ -182,28 +184,7 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col">
-      <header className="bg-white border-b shadow-sm sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex justify-between items-center">
-          <div className="flex items-center space-x-3">
-             <div className="bg-blue-600 p-2 rounded-lg">
-                <FileText size={24} className="text-white" />
-             </div>
-             <h1 className="text-xl font-bold text-slate-800">PlanSync Dashboard</h1>
-          </div>
-
-          <div className="flex items-center space-x-4">
-            {!isOnline && <span className="text-sm font-bold text-yellow-500 mr-2">Offline Modus</span>}
-            <span className="text-sm text-slate-600">Angemeldet als <strong>{user.firstName} {user.lastName}</strong></span>
-            <button
-              onClick={handleLogout}
-              className="text-slate-500 hover:text-red-600 p-2 rounded-full hover:bg-red-50 transition-colors"
-              title="Abmelden"
-            >
-              <LogOut size={20} />
-            </button>
-          </div>
-        </div>
-      </header>
+      <Navbar />
 
       <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
         <div className="flex justify-between items-center mb-8">
@@ -329,7 +310,8 @@ export default function Dashboard() {
                       </div>
                     )}
 
-                    <div className="pt-2 flex justify-end">
+                    <div className="pt-2 flex justify-between items-center">
+                      <button onClick={() => setQrModal({url: `${window.location.origin}/viewer/${project.id}/${project.documents[0]?.id || ''}`, title: project.name})} className="text-xs flex items-center text-slate-500 hover:text-slate-800 transition-colors" title="QR-Code generieren"><QrCode size={14} className="mr-1"/> QR-Code</button>
                       {isOffline ? (
                         <button
                           onClick={() => handleRemoveOffline(project)}
@@ -357,6 +339,8 @@ export default function Dashboard() {
             })}
           </div>
         )}
+
+      {qrModal && <QRCodeModal url={qrModal.url} title={qrModal.title} onClose={() => setQrModal(null)} />}
       </main>
     </div>
   );
