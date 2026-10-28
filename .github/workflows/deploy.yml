@@ -1,0 +1,42 @@
+name: Deploy to VPS
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Copy files to VPS via rsync
+        uses: easingthemes/ssh-deploy@v5.0.3
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.VPS_SSH_KEY }}
+          ARGS: "-rltgoDzvO --delete"
+          SOURCE: "/"
+          REMOTE_HOST: ${{ secrets.VPS_HOST }}
+          REMOTE_USER: ${{ secrets.VPS_USERNAME }}
+          TARGET: "/opt/plansync"
+          EXCLUDE: "/node_modules/, /.git/, /frontend/node_modules/, /backend/node_modules/, /backend/uploads/, /backend/prisma/*.db"
+
+      - name: Execute deployment script on VPS
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USERNAME }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            cd /opt/plansync
+
+            # Ensure the external network exists (for traefik/nginx-proxy)
+            docker network inspect webproxy >/dev/null 2>&1 || docker network create webproxy
+
+            # Rebuild and restart the container
+            docker compose -f docker-compose.prod.yml up --build -d
+
+            # Clean up dangling images to save space
+            docker image prune -f

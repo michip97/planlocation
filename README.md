@@ -82,3 +82,28 @@ Alle hochgeladenen PDF-Dateien und die SQLite-Datenbank werden dauerhaft gespeic
 * **Tenant-Isolation:** Jeder Benutzer hat eine `tenantId`. In den Prisma-Queries wird dies stets forciert, was "Tenant-Bleeding" unmöglich macht.
 * **Offline-Queue:** Wenn der User offline eine Pendenz ändert, wird die Mutations-Payload in IndexedDB abgelegt. Ein EventListener triggert die asynchrone Abarbeitung der Queue, sobald das Gerät wieder online ist. Zur Fehlervermeidung werden Tasks schon im Frontend mit UUIDs versehen (optimistisches UI), sodass der Server keine Doppel-Einträge erstellt.
 * **Große PDF-Pläne:** `react-zoom-pan-pinch` skaliert nur das Canvas (via CSS Transform), was für Architekturpläne viel performanter ist als wiederholtes PDF-Neu-Rendern beim Heranzoomen. Der PDF.js-Worker liegt lokal im Build, um echte Offline-Nutzung zu garantieren.
+
+---
+
+## 🚀 CI/CD & VPS Deployment (Produktion)
+
+Das Projekt ist vollständig für das automatische Deployment auf einem Virtual Private Server (VPS) via GitHub Actions vorbereitet. Es kann problemlos parallel zu anderen Projekten (wie Homepages) laufen.
+
+Das Setup verwendet `docker-compose.prod.yml`, welches die Anwendung in ein externes Docker-Netzwerk (`webproxy`) einhängt und Labels bereitstellt, die von Reverse Proxies (wie **Traefik** oder **Nginx-Proxy**) automatisch erkannt werden.
+
+### 1. Vorbereitungen auf GitHub
+Damit die GitHub Action funktioniert, musst du in deinem Repository unter `Settings` > `Secrets and variables` > `Actions` folgende **Repository Secrets** anlegen:
+
+- `VPS_HOST`: Die IP-Adresse oder Domain deines VPS.
+- `VPS_USERNAME`: Der SSH-Benutzername (z.B. `root` oder `ubuntu`).
+- `VPS_SSH_KEY`: Ein privater SSH-Key, mit dem GitHub Actions sich passwortlos auf dem Server einloggen darf.
+
+### 2. Konfiguration anpassen (Optional)
+Die `docker-compose.prod.yml` ist aktuell so konfiguriert, dass sie auf den Hostnamen **`planlocationtest.michaelportmann.ch`** reagiert.
+Wenn sich dieser ändert, passe einfach die Zeilen mit `VIRTUAL_HOST` und `LETSENCRYPT_HOST` (oder die Traefik-Labels) in der Datei an.
+
+### 3. Deployment
+Sobald du Code auf den `main` Branch pushst, passiert Folgendes automatisch:
+1. Die Dateien werden sicher per `rsync` auf den VPS unter `/opt/plansync` kopiert (Uploads und die Datenbank werden natürlich nicht überschrieben).
+2. Auf dem Server wird der Container neu gebaut (`docker compose --build`).
+3. Die App startet im Hintergrund neu (`-d`), ohne Ausfallzeiten.

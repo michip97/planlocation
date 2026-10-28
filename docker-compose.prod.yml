@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  plansync:
+    build: .
+    restart: unless-stopped
+    volumes:
+      - plansync_db:/app/backend/prisma
+      - plansync_uploads:/app/backend/uploads
+    environment:
+      - NODE_ENV=production
+      - JWT_SECRET=${JWT_SECRET:-generate_a_secure_secret_for_production_123!}
+      - PORT=3000
+    networks:
+      - webproxy
+    labels:
+      # Nginx-Proxy & Let's Encrypt Konfiguration
+      - "traefik.enable=true"
+      - "traefik.http.routers.plansync.rule=Host(`planlocationtest.michaelportmann.ch`)"
+      - "traefik.http.routers.plansync.entrypoints=websecure"
+      - "traefik.http.routers.plansync.tls.certresolver=myresolver"
+      - "traefik.http.services.plansync.loadbalancer.server.port=3000"
+
+      # Fallback falls nginx-proxy companion statt traefik verwendet wird:
+      - "VIRTUAL_HOST=planlocationtest.michaelportmann.ch"
+      - "LETSENCRYPT_HOST=planlocationtest.michaelportmann.ch"
+      - "VIRTUAL_PORT=3000"
+
+volumes:
+  plansync_db:
+  plansync_uploads:
+
+networks:
+  webproxy:
+    external: true
+    # Hinweis: Dieses Netzwerk muss auf dem Server existieren (z.B. durch den Nginx-Proxy oder Traefik angelegt)
