@@ -1,4 +1,3 @@
-import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Login from './pages/Login';
@@ -7,9 +6,10 @@ import TasksList from './pages/TasksList';
 import DocumentView from './pages/DocumentView'
 import './index.css';
 import PWABadge from './components/PWABadge';
+import ErrorBoundary from './components/ErrorBoundary';
 
 ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
-  <React.StrictMode>
+  <ErrorBoundary>
     <BrowserRouter>
       <PWABadge />
       <Routes>
@@ -20,5 +20,5 @@ ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
         <Route path="/viewer/:projectId/:documentId" element={<DocumentView />} />
       </Routes>
     </BrowserRouter>
-  </React.StrictMode>,
+  </ErrorBoundary>
 )
