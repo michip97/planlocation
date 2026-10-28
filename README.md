@@ -107,3 +107,28 @@ Sobald du Code auf den `main` Branch pushst, passiert Folgendes automatisch:
 1. Die Dateien werden sicher per `rsync` auf den VPS unter `/opt/plansync` kopiert (Uploads und die Datenbank werden natürlich nicht überschrieben).
 2. Auf dem Server wird der Container neu gebaut (`docker compose --build`).
 3. Die App startet im Hintergrund neu (`-d`), ohne Ausfallzeiten.
+
+---
+
+## 🗄️ CI/CD Deployment mit GitHub Container Registry (GHCR) & PostgreSQL
+
+Die App ist für das automatische Deployment auf einen VPS optimiert und nutzt GitHub Actions, um das Docker Image zu bauen und auf der GitHub Container Registry (GHCR) abzulegen. Der Server zieht sich dieses Image anschließend.
+
+### Voraussetzungen (GitHub Secrets)
+Folgende Secrets müssen in deinem GitHub Repository (`Settings > Secrets and variables > Actions`) hinterlegt werden:
+
+- `VPS_HOST`: Die IP-Adresse oder der Hostname deines Servers.
+- `VPS_USERNAME`: Der SSH-User (z.B. `root`).
+- `VPS_SSH_KEY`: Dein privater SSH-Schlüssel für den Serverzugriff.
+- `DB_PASSWORD`: Ein starkes Passwort für die PostgreSQL Datenbank auf dem Server.
+- `JWT_SECRET`: Ein starker, zufälliger String für die Ausstellung von Login-Tokens.
+- `DOMAIN`: Deine Zieldomain (z.B. `planlocationtest.michaelportmann.ch`). Dies konfiguriert den Reverse Proxy (Traefik).
+
+**Hinweis zu Traefik:**
+Die `docker-compose.prod.yml` erwartet, dass Traefik auf deinem Server installiert ist und ein externes Docker-Netzwerk namens `webproxy` existiert.
+
+### Ablauf des Deployments
+Sobald du Code auf den `main` Branch pushst:
+1. **Build & Push:** GitHub Actions baut das Fullstack-Docker-Image (Frontend + Backend) und lädt es sicher in die GHCR deines Repositories hoch.
+2. **Transfer:** Die `docker-compose.prod.yml` wird per SCP auf deinen Server unter `/opt/plansync` kopiert.
+3. **Pull & Start:** Die GitHub Action loggt sich per SSH auf deinem Server ein, lädt das neuste Image herunter und startet den Container mit `docker compose up -d` neu, wodurch die App sofort unter deiner Domain erreichbar ist.

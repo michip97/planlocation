@@ -1,36 +1,45 @@
 version: '3.8'
 
 services:
-  plansync:
-    build: .
+  db:
+    image: postgres:15
     restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-plansync}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-plansync_db}
     volumes:
-      - plansync_db:/app/backend/prisma
+      - plansync_db_data:/var/lib/postgresql/data
+    networks:
+      - internal
+
+  app:
+    image: ghcr.io/${REPO}-app:latest
+    restart: unless-stopped
+    depends_on:
+      - db
+    volumes:
       - plansync_uploads:/app/backend/uploads
     environment:
       - NODE_ENV=production
-      - JWT_SECRET=${JWT_SECRET:-generate_a_secure_secret_for_production_123!}
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-plansync}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-plansync_db}?schema=public
+      - JWT_SECRET=${JWT_SECRET}
       - PORT=3000
     networks:
+      - internal
       - webproxy
     labels:
-      # Nginx-Proxy & Let's Encrypt Konfiguration
       - "traefik.enable=true"
-      - "traefik.http.routers.plansync.rule=Host(`planlocationtest.michaelportmann.ch`)"
+      - "traefik.http.routers.plansync.rule=Host(`${DOMAIN}`)"
       - "traefik.http.routers.plansync.entrypoints=websecure"
       - "traefik.http.routers.plansync.tls.certresolver=myresolver"
       - "traefik.http.services.plansync.loadbalancer.server.port=3000"
 
-      # Fallback falls nginx-proxy companion statt traefik verwendet wird:
-      - "VIRTUAL_HOST=planlocationtest.michaelportmann.ch"
-      - "LETSENCRYPT_HOST=planlocationtest.michaelportmann.ch"
-      - "VIRTUAL_PORT=3000"
-
 volumes:
-  plansync_db:
+  plansync_db_data:
   plansync_uploads:
 
 networks:
+  internal:
   webproxy:
     external: true
-    # Hinweis: Dieses Netzwerk muss auf dem Server existieren (z.B. durch den Nginx-Proxy oder Traefik angelegt)

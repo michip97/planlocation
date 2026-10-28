@@ -34,4 +34,4 @@ RUN mkdir -p uploads prisma/migrations
 EXPOSE 3000
 
 # Start script
-CMD ["sh", "-c", "npx prisma migrate deploy && node dist/server.js"]
+CMD ["sh", "-c", "npx prisma db push && node dist/server.js"]

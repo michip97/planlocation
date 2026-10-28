@@ -1,16 +1,28 @@
 services:
-  plansync:
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: plansync
+      POSTGRES_PASSWORD: plansyncpassword
+      POSTGRES_DB: plansync_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  app:
     build: .
     ports:
       - "3000:3000"
-    volumes:
-      - plansync_db:/app/backend/prisma
-      - plansync_uploads:/app/backend/uploads
     environment:
-      - NODE_ENV=production
-      - JWT_SECRET=production_super_secret_change_me_123!
+      - DATABASE_URL=postgresql://plansync:plansyncpassword@db:5432/plansync_db?schema=public
+      - JWT_SECRET=local_development_secret_123
       - PORT=3000
+    depends_on:
+      - db
+    volumes:
+      - plansync_uploads:/app/backend/uploads
 
 volumes:
-  plansync_db:
+  postgres_data:
   plansync_uploads:

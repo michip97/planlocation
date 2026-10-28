@@ -1,42 +1,86 @@
-name: Deploy to VPS
+name: Deploy to VPS via GHCR
 
 on:
   push:
     branches:
       - main
 
+env:
+  REGISTRY: ghcr.io
+
 jobs:
-  deploy:
+  build-and-push-images:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
     steps:
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Copy files to VPS via rsync
-        uses: easingthemes/ssh-deploy@v5.0.3
-        env:
-          SSH_PRIVATE_KEY: ${{ secrets.VPS_SSH_KEY }}
-          ARGS: "-rltgoDzvO --delete"
-          SOURCE: "/"
-          REMOTE_HOST: ${{ secrets.VPS_HOST }}
-          REMOTE_USER: ${{ secrets.VPS_USERNAME }}
-          TARGET: "/opt/plansync"
-          EXCLUDE: "/node_modules/, /.git/, /frontend/node_modules/, /backend/node_modules/, /backend/uploads/, /backend/prisma/*.db"
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Execute deployment script on VPS
-        uses: appleboy/ssh-action@v1.0.3
+      - name: Downcase REPO
+        run: |
+          echo "REPO=${GITHUB_REPOSITORY,,}" >>${GITHUB_ENV}
+
+      - name: Build and push Fullstack Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ env.REPO }}-app:latest
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build-and-push-images
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Copy docker-compose to VPS
+        uses: appleboy/scp-action@master
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USERNAME }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          source: "docker-compose.prod.yml"
+          target: "/opt/plansync"
+
+      - name: Deploy on VPS
+        uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USERNAME }}
           key: ${{ secrets.VPS_SSH_KEY }}
           script: |
+            # Create directory if it doesn't exist
+            mkdir -p /opt/plansync
             cd /opt/plansync
+
+            # Login to GHCR (Server needs access to pull images)
+            echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+            # Export environment variables for docker-compose
+            export REPO="$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')"
+            export POSTGRES_PASSWORD="${{ secrets.DB_PASSWORD }}"
+            export JWT_SECRET="${{ secrets.JWT_SECRET }}"
+            export DOMAIN="${{ secrets.DOMAIN }}"
 
             # Ensure the external network exists (for traefik/nginx-proxy)
             docker network inspect webproxy >/dev/null 2>&1 || docker network create webproxy
 
-            # Rebuild and restart the container
-            docker compose -f docker-compose.prod.yml up --build -d
+            # Pull new images and recreate containers
+            docker compose -f docker-compose.prod.yml pull
+            docker compose -f docker-compose.prod.yml down
+            docker compose -f docker-compose.prod.yml up -d --force-recreate
 
-            # Clean up dangling images to save space
-            docker image prune -f
+            # Clean up old images
+            docker image prune -af
