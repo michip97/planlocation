@@ -50,6 +50,16 @@ export default function Dashboard() {
   }, [navigate, token]);
 
   const fetchProjects = async () => {
+    const loadOfflineData = async () => {
+      const registry = await getOfflineProjectsRegistry();
+      const offlineProjs: Project[] = [];
+      for (const id of registry) {
+          const cachedProj = await getCachedProjectDetails(id);
+          if (cachedProj) offlineProjs.push(cachedProj);
+      }
+      setProjects(offlineProjs);
+    };
+
     if (navigator.onLine) {
         try {
           const response = await axios.get('/api/projects', {
@@ -60,19 +70,17 @@ export default function Dashboard() {
           console.error('Failed to fetch projects', error);
           if (axios.isAxiosError(error) && error.response?.status === 401) {
             handleLogout();
+          } else {
+            // Fallback to offline data if server is unreachable despite navigator.onLine being true
+            setIsOnline(false);
+            await loadOfflineData();
           }
         } finally {
           setLoading(false);
         }
     } else {
         // If offline, only load projects from the offline registry
-        const registry = await getOfflineProjectsRegistry();
-        const offlineProjs: Project[] = [];
-        for (const id of registry) {
-            const cachedProj = await getCachedProjectDetails(id);
-            if (cachedProj) offlineProjs.push(cachedProj);
-        }
-        setProjects(offlineProjs);
+        await loadOfflineData();
         setLoading(false);
     }
   };

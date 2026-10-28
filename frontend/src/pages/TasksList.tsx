@@ -37,6 +37,36 @@ export default function TasksList() {
   }, [token, navigate, filterStatus, filterPriority, isOnline]);
 
   const fetchTasks = async () => {
+    const loadOfflineData = async () => {
+      // Offline mode: Aggregate all tasks from cached offline projects
+      const registry = await getOfflineProjectsRegistry();
+      let offlineTasks: any[] = [];
+
+      for (const projectId of registry) {
+          const project = await getCachedProjectDetails(projectId);
+          if (!project) continue;
+
+          for (const doc of project.documents) {
+              const cachedTasksForDoc = await getCachedTasks(projectId, doc.id);
+              const enrichedTasks = cachedTasksForDoc.map(t => ({
+                  ...t,
+                  project: { name: project.name },
+                  document: { filename: doc.filename }
+              }));
+              offlineTasks = [...offlineTasks, ...enrichedTasks];
+          }
+      }
+
+      // Apply filters locally since we're offline
+      if (filterStatus) {
+          offlineTasks = offlineTasks.filter(t => t.status === filterStatus);
+      }
+      if (filterPriority) {
+          offlineTasks = offlineTasks.filter(t => t.priority === filterPriority);
+      }
+      setTasks(offlineTasks);
+    };
+
     try {
       setLoading(true);
       if (isOnline) {
@@ -49,36 +79,13 @@ export default function TasksList() {
           });
           setTasks(response.data);
       } else {
-          // Offline mode: Aggregate all tasks from cached offline projects
-          const registry = await getOfflineProjectsRegistry();
-          let offlineTasks: any[] = [];
-
-          for (const projectId of registry) {
-              const project = await getCachedProjectDetails(projectId);
-              if (!project) continue;
-
-              for (const doc of project.documents) {
-                  const cachedTasksForDoc = await getCachedTasks(projectId, doc.id);
-                  const enrichedTasks = cachedTasksForDoc.map(t => ({
-                      ...t,
-                      project: { name: project.name },
-                      document: { filename: doc.filename }
-                  }));
-                  offlineTasks = [...offlineTasks, ...enrichedTasks];
-              }
-          }
-
-          // Apply filters locally since we're offline
-          if (filterStatus) {
-              offlineTasks = offlineTasks.filter(t => t.status === filterStatus);
-          }
-          if (filterPriority) {
-              offlineTasks = offlineTasks.filter(t => t.priority === filterPriority);
-          }
-          setTasks(offlineTasks);
+          await loadOfflineData();
       }
     } catch (error) {
       console.error('Failed to fetch tasks', error);
+      // Fallback to offline data if server is unreachable
+      setIsOnline(false);
+      await loadOfflineData();
     } finally {
       setLoading(false);
     }

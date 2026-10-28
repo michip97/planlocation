@@ -58,6 +58,7 @@ export default function DocumentView() {
         await cacheTasks(projectId, documentId, fetchedTasks);
       } catch (e) {
         console.error("Failed to load tasks", e);
+        setIsOnline(false); // Backend unreachable
         const cached = await getCachedTasks(projectId, documentId);
         setTasks(cached);
       }
@@ -90,6 +91,7 @@ export default function DocumentView() {
           }
         } catch (e) {
           console.error("Failed to load project details", e);
+          setIsOnline(false); // Backend unreachable
           const cachedProj = await getCachedProjectDetails(projectId);
           if (cachedProj) {
             setProject(cachedProj);
@@ -119,6 +121,7 @@ export default function DocumentView() {
           await cachePdfBlob(documentId, res.data);
         } catch (e) {
           console.error("Failed to fetch PDF", e);
+          setIsOnline(false); // Backend unreachable
           const cachedBlob = await getCachedPdfBlob(documentId);
           if (cachedBlob) {
             setPdfUrl(URL.createObjectURL(cachedBlob));
