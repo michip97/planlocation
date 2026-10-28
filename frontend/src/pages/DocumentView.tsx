@@ -6,7 +6,7 @@ import TaskMarker from '../components/TaskMarker';
 import TaskSidebar from '../components/TaskSidebar';
 import type { Task, Project, Document } from '../types';
 import { ArrowLeft, Cloud, CloudOff } from 'lucide-react';
-import { addToSyncQueue, processSyncQueue } from '../utils/syncManager';
+import { addToSyncQueue, processSyncQueue, getSyncQueue } from '../utils/syncManager';
 import {
   cacheTasks, getCachedTasks,
   cacheProjectDetails, getCachedProjectDetails,
@@ -48,6 +48,24 @@ export default function DocumentView() {
   const fetchTasks = async () => {
     if (!projectId || !documentId) return;
 
+    const mergeOfflineTasks = async (baseTasks: Task[]) => {
+      const queue = await getSyncQueue();
+      let merged = [...baseTasks];
+      for (const action of queue) {
+        if (action.payload.documentId === documentId) {
+          if (action.type === 'CREATE_TASK') {
+            // Check if it already exists to prevent duplicates
+            if (!merged.find(t => t.id === action.payload.id)) {
+              merged.push(action.payload as Task);
+            }
+          } else if (action.type === 'UPDATE_TASK') {
+            merged = merged.map(t => t.id === action.payload.id ? action.payload as Task : t);
+          }
+        }
+      }
+      return merged;
+    };
+
     if (navigator.onLine && token) {
       try {
         const response = await axios.get(`/api/tasks/${projectId}/${documentId}`, {
@@ -60,11 +78,11 @@ export default function DocumentView() {
         console.error("Failed to load tasks", e);
         setIsOnline(false); // Backend unreachable
         const cached = await getCachedTasks(projectId, documentId);
-        setTasks(cached);
+        setTasks(await mergeOfflineTasks(cached));
       }
     } else {
       const cached = await getCachedTasks(projectId, documentId);
-      setTasks(cached);
+      setTasks(await mergeOfflineTasks(cached));
     }
   };
 

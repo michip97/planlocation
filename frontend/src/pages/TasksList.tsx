@@ -5,6 +5,7 @@ import Navbar from '../components/Navbar';
 import { Filter, Search, ArrowRight, Download, CloudOff } from 'lucide-react';
 import { generateTasksPDF } from '../utils/pdfExport';
 import { getOfflineProjectsRegistry, getCachedTasks, getCachedProjectDetails } from '../utils/offlineCache';
+import { getSyncQueue } from '../utils/syncManager';
 
 export default function TasksList() {
   const [tasks, setTasks] = useState<any[]>([]);
@@ -55,6 +56,32 @@ export default function TasksList() {
               }));
               offlineTasks = [...offlineTasks, ...enrichedTasks];
           }
+      }
+
+      // Merge un-synced tasks from the sync queue
+      const queue = await getSyncQueue();
+      for (const action of queue) {
+        if (action.type === 'CREATE_TASK') {
+           // Prevent duplicates if it somehow got cached
+           if (!offlineTasks.find(t => t.id === action.payload.id)) {
+              // Try to find project/document names for the new task
+              let projName = 'Unbekanntes Projekt';
+              let docFilename = 'Unbekannter Plan';
+              const p = await getCachedProjectDetails(action.payload.projectId);
+              if (p) {
+                 projName = p.name;
+                 const d = p.documents.find((doc: any) => doc.id === action.payload.documentId);
+                 if (d) docFilename = d.filename;
+              }
+              offlineTasks.push({
+                  ...action.payload,
+                  project: { name: projName },
+                  document: { filename: docFilename }
+              });
+           }
+        } else if (action.type === 'UPDATE_TASK') {
+           offlineTasks = offlineTasks.map(t => t.id === action.payload.id ? { ...t, ...action.payload } : t);
+        }
       }
 
       // Apply filters locally since we're offline
