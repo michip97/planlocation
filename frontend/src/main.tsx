@@ -9,16 +9,14 @@ import './index.css';
 import PWABadge from './components/PWABadge';
 
 ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
-  <React.StrictMode>
-    <BrowserRouter>
-      <PWABadge />
-      <Routes>
-        <Route path="/" element={<Navigate to="/login" replace />} />
-        <Route path="/login" element={<Login />} />
-        <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/tasks" element={<TasksList />} />
-        <Route path="/viewer/:projectId/:documentId" element={<DocumentView />} />
-      </Routes>
-    </BrowserRouter>
-  </React.StrictMode>,
+  <BrowserRouter>
+    <PWABadge />
+    <Routes>
+      <Route path="/" element={<Navigate to="/login" replace />} />
+      <Route path="/login" element={<Login />} />
+      <Route path="/dashboard" element={<Dashboard />} />
+      <Route path="/tasks" element={<TasksList />} />
+      <Route path="/viewer/:projectId/:documentId" element={<DocumentView />} />
+    </Routes>
+  </BrowserRouter>,
 )

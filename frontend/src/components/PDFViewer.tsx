@@ -4,10 +4,12 @@ import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 import { ZoomIn, ZoomOut, Maximize, MousePointer2, Hand, Loader2 } from 'lucide-react';
 import { TransformWrapper, TransformComponent } from 'react-zoom-pan-pinch';
+import { ErrorBoundary } from './ErrorBoundary';
 
-// Properly load the worker in a Vite environment
-import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
-pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
+// Properly load the worker in a Vite environment. This ensures it's bundled
+// locally and cached by vite-plugin-pwa for offline use.
+import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+pdfjs.GlobalWorkerOptions.workerSrc = pdfWorker;
 
 interface PDFViewerProps {
   url: string;
@@ -107,34 +109,36 @@ export default function PDFViewer({ url, onClick, children }: PDFViewerProps) {
                     </div>
                   )}
 
-                  <Document
-                    file={url}
-                    onLoadSuccess={() => setIsDocumentLoaded(true)}
-                    onLoadError={(err) => {
-                        console.error('PDF Load Error:', err);
-                        setErrorMsg(err.message || 'Unbekannter Fehler beim Laden');
-                    }}
-                    loading={null}
-                    error={
-                      <div className="absolute inset-0 z-10 bg-white flex flex-col items-center justify-center p-20 text-red-500">
-                        <div className="font-bold text-xl mb-2">Fehler beim Laden</div>
-                        <div className="text-center">{errorMsg || 'Das PDF-Dokument konnte nicht geladen werden.'}</div>
-                      </div>
-                    }
-                  >
-                    <Page
-                      pageNumber={pageNumber}
-                      scale={2}
-                      renderAnnotationLayer={false}
-                      renderTextLayer={false}
-                      onRenderSuccess={() => setIsPageRendered(true)}
-                      onRenderError={(err) => {
-                          console.error('PDF Page Render Error:', err);
-                          setErrorMsg(err.message || 'Fehler beim Rendern der Seite');
+                  <ErrorBoundary>
+                    <Document
+                      file={url}
+                      onLoadSuccess={() => setIsDocumentLoaded(true)}
+                      onLoadError={(err) => {
+                          console.error('PDF Load Error:', err);
+                          setErrorMsg(err.message || 'Unbekannter Fehler beim Laden');
                       }}
-                      className={`transition-opacity duration-1000 ${isLoading ? 'opacity-0' : 'opacity-100'}`}
-                    />
-                  </Document>
+                      loading={null}
+                      error={
+                        <div className="absolute inset-0 z-10 bg-white flex flex-col items-center justify-center p-20 text-red-500">
+                          <div className="font-bold text-xl mb-2">Fehler beim Laden</div>
+                          <div className="text-center">{errorMsg || 'Das PDF-Dokument konnte nicht geladen werden.'}</div>
+                        </div>
+                      }
+                    >
+                      <Page
+                        pageNumber={pageNumber}
+                        scale={2}
+                        renderAnnotationLayer={false}
+                        renderTextLayer={false}
+                        onRenderSuccess={() => setIsPageRendered(true)}
+                        onRenderError={(err) => {
+                            console.error('PDF Page Render Error:', err);
+                            setErrorMsg(err.message || 'Fehler beim Rendern der Seite');
+                        }}
+                        className={`transition-opacity duration-1000 ${isLoading ? 'opacity-0' : 'opacity-100'}`}
+                      />
+                    </Document>
+                  </ErrorBoundary>
 
                   <div className="absolute inset-0 pointer-events-none z-20">
                     <div className="relative w-full h-full pointer-events-auto">
