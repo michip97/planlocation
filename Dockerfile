@@ -19,6 +19,9 @@ RUN npm run build
 FROM node:20-alpine
 WORKDIR /app/backend
 
+# Install OpenSSL (required for Prisma Engine on Alpine)
+RUN apk add --no-cache openssl
+
 # Copy backend build and dependencies
 COPY --from=backend-builder /app/backend/dist ./dist
 COPY --from=backend-builder /app/backend/node_modules ./node_modules
