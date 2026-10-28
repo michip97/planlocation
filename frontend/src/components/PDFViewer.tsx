@@ -2,24 +2,27 @@ import { useState } from 'react';
 import { Document, Page, pdfjs } from 'react-pdf';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
-import { ZoomIn, ZoomOut, Maximize, MousePointer2, Hand } from 'lucide-react';
+import { ZoomIn, ZoomOut, Maximize, MousePointer2, Hand, Loader2 } from 'lucide-react';
 import { TransformWrapper, TransformComponent } from 'react-zoom-pan-pinch';
 
-// Setup worker
-pdfjs.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString();
+// Properly load the worker in a Vite environment
+import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 
 interface PDFViewerProps {
   url: string;
   onClick?: (e: React.MouseEvent, pageNumber: number) => void;
-  children?: React.ReactNode; // For overlays
+  children?: React.ReactNode;
 }
-
 
 export default function PDFViewer({ url, onClick, children }: PDFViewerProps) {
   const [isPanningMode, setIsPanningMode] = useState(true);
+  const [isDocumentLoaded, setIsDocumentLoaded] = useState(false);
+  const [isPageRendered, setIsPageRendered] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // We only render page 1 for architecture plans
   const pageNumber = 1;
+  const isLoading = !isDocumentLoaded || !isPageRendered;
 
   return (
     <div className="flex flex-col h-full bg-gray-900 w-full overflow-hidden relative select-none">
@@ -28,9 +31,9 @@ export default function PDFViewer({ url, onClick, children }: PDFViewerProps) {
         minScale={0.1}
         maxScale={10}
         centerOnInit={true}
-        wheel={{ step: 0.1 }} // Smooth mouse wheel zoom
+        wheel={{ step: 0.1 }}
         panning={{ disabled: !isPanningMode }}
-        doubleClick={{ disabled: true }} // Disable double click zoom so it doesn't interfere with quick clicks
+        doubleClick={{ disabled: true }}
       >
         {({ zoomIn, zoomOut, resetTransform }) => (
           <>
@@ -79,10 +82,9 @@ export default function PDFViewer({ url, onClick, children }: PDFViewerProps) {
             <div className="flex-1 w-full h-full cursor-default" style={{ cursor: isPanningMode ? 'grab' : 'crosshair' }}>
               <TransformComponent wrapperStyle={{ width: "100%", height: "100%" }}>
                 <div
-                  className="relative bg-white shadow-2xl"
+                  className="relative bg-white shadow-2xl min-w-[800px] min-h-[600px] flex items-center justify-center"
                   onClick={(e) => {
-                    // Only trigger click if we are NOT in panning mode
-                    if (!isPanningMode && onClick) {
+                    if (!isPanningMode && !isLoading && onClick) {
                       onClick(e, pageNumber);
                     }
                   }}
@@ -93,28 +95,53 @@ export default function PDFViewer({ url, onClick, children }: PDFViewerProps) {
                      if (isPanningMode) e.currentTarget.style.cursor = 'grab';
                   }}
                 >
+                  {isLoading && !errorMsg && (
+                    <div className="absolute inset-0 z-10 bg-slate-50 flex flex-col items-center justify-center text-slate-400">
+                      <Loader2 size={48} className="animate-spin text-blue-500 mb-4" />
+                      <div className="text-lg font-medium tracking-wide">
+                        {!isDocumentLoaded ? "Plan wird heruntergeladen..." : "Plan wird gerendert..."}
+                      </div>
+                      <div className="w-64 h-2 bg-slate-200 rounded-full mt-4 overflow-hidden">
+                        <div className="h-full bg-blue-500 rounded-full animate-pulse w-full"></div>
+                      </div>
+                    </div>
+                  )}
+
                   <Document
                     file={url}
-                    loading={
-                      <div className="p-20 flex justify-center items-center w-[800px] h-[600px]">
-                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+                    onLoadSuccess={() => setIsDocumentLoaded(true)}
+                    onLoadError={(err) => {
+                        console.error('PDF Load Error:', err);
+                        setErrorMsg(err.message || 'Unbekannter Fehler beim Laden');
+                    }}
+                    loading={null}
+                    error={
+                      <div className="absolute inset-0 z-10 bg-white flex flex-col items-center justify-center p-20 text-red-500">
+                        <div className="font-bold text-xl mb-2">Fehler beim Laden</div>
+                        <div className="text-center">{errorMsg || 'Das PDF-Dokument konnte nicht geladen werden.'}</div>
                       </div>
                     }
-                    error={
-                      <div className="p-20 text-red-500">Fehler beim Laden des PDF-Dokuments.</div>
-                    }
                   >
-                    {/* Render standard scale 2 to get a very high res crisp canvas,
-                        the user zooms in and out via CSS transform (react-zoom-pan-pinch) */}
                     <Page
                       pageNumber={pageNumber}
                       scale={2}
                       renderAnnotationLayer={false}
-                      renderTextLayer={false} // Disable text layer for better performance on large architectural plans
-                      className="pdf-page-container"
+                      renderTextLayer={false}
+                      onRenderSuccess={() => setIsPageRendered(true)}
+                      onRenderError={(err) => {
+                          console.error('PDF Page Render Error:', err);
+                          setErrorMsg(err.message || 'Fehler beim Rendern der Seite');
+                      }}
+                      className={`transition-opacity duration-1000 ${isLoading ? 'opacity-0' : 'opacity-100'}`}
                     />
-                    {children}
                   </Document>
+
+                  <div className="absolute inset-0 pointer-events-none z-20">
+                    <div className="relative w-full h-full pointer-events-auto">
+                      {children}
+                    </div>
+                  </div>
+
                 </div>
               </TransformComponent>
             </div>

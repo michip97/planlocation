@@ -1,0 +1,10 @@
+
+> frontend@0.0.0 dev
+> vite
+
+
+  VITE v8.3.4  ready in 471 ms
+
+  ➜  Local:   http://localhost:5173/
+  ➜  Network: use --host to expose
+5:41:01 PM [vite] (client) hmr update /src/components/PDFViewer.tsx, /src/index.css
