@@ -18,6 +18,9 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
+      devOptions: {
+        enabled: true
+      },
       includeAssets: ['favicon.svg', 'icons.svg', 'sample.pdf'], // cache static assets
       manifest: {
         name: 'PlanSync',

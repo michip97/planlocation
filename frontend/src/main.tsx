@@ -1,4 +1,3 @@
-import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Login from './pages/Login';
@@ -10,18 +9,16 @@ import PWABadge from './components/PWABadge';
 import ErrorBoundary from './components/ErrorBoundary';
 
 ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
-  <React.StrictMode>
-    <ErrorBoundary>
-      <BrowserRouter>
-        <PWABadge />
-        <Routes>
-          <Route path="/" element={<Navigate to="/login" replace />} />
-          <Route path="/login" element={<Login />} />
-          <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/tasks" element={<TasksList />} />
-          <Route path="/viewer/:projectId/:documentId" element={<DocumentView />} />
-        </Routes>
-      </BrowserRouter>
-    </ErrorBoundary>
-  </React.StrictMode>,
+  <ErrorBoundary>
+    <BrowserRouter>
+      <PWABadge />
+      <Routes>
+        <Route path="/" element={<Navigate to="/login" replace />} />
+        <Route path="/login" element={<Login />} />
+        <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/tasks" element={<TasksList />} />
+        <Route path="/viewer/:projectId/:documentId" element={<DocumentView />} />
+      </Routes>
+    </BrowserRouter>
+  </ErrorBoundary>
 )
