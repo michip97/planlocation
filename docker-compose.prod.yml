@@ -12,10 +12,11 @@ services:
       - JWT_SECRET=${JWT_SECRET}
       - PORT=3000
     networks:
-      - webproxy
-      - postgres_network # Assuming the shared db is on a specific network, this can be configured if needed, but often the DATABASE_URL handles routing (e.g., host IP or explicit network DNS)
+      - portfolio-network
+      - shared-database
     labels:
       - "traefik.enable=true"
+      - "traefik.docker.network=portfolio-network"
       - "traefik.http.routers.plansync.rule=Host(`${DOMAIN}`)"
       - "traefik.http.routers.plansync.entrypoints=websecure"
       - "traefik.http.routers.plansync.tls.certresolver=myresolver"
@@ -25,7 +26,9 @@ volumes:
   plansync_uploads:
 
 networks:
-  webproxy:
+  portfolio-network:
+    name: portfolio_portfolio-network
     external: true
-  postgres_network:
+
+  shared-database:
     external: true
