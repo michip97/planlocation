@@ -54,7 +54,7 @@ export default function MapLibrePlanViewer({ url, onPlanClick, onPinClick, tasks
   useEffect(() => {
     if (!mapContainer.current || !metadata || map.current) return;
 
-    const { aspectRatio, tileSize, maxZoom } = metadata;
+    const { aspectRatio, maxZoom } = metadata;
 
     const mapInstance = new maplibregl.Map({
       container: mapContainer.current,
@@ -86,7 +86,7 @@ export default function MapLibrePlanViewer({ url, onPlanClick, onPinClick, tasks
       mapInstance.addSource('plan-tiles', {
         type: 'raster',
         tiles: [`/api/documents/${documentId}/tiles/{z}/{x}/{y}.webp`],
-        tileSize: tileSize,
+        tileSize: 256, // Request tiles at 256px to ensure high-DPI/Retina crispness with our 512px WebP images
         maxzoom: maxZoom,
         bounds: [0, 0, 1, aspectRatio] // Limits where tiles are requested
       });
@@ -105,6 +105,21 @@ export default function MapLibrePlanViewer({ url, onPlanClick, onPinClick, tasks
         type: 'geojson',
         data: { type: 'FeatureCollection', features: [] }
       });
+      // Generate icon image dynamically for map pins to not rely on remote fonts
+      const canvas = document.createElement('canvas');
+      canvas.width = 24;
+      canvas.height = 24;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.font = 'bold 16px sans-serif';
+        ctx.fillStyle = 'white';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('!', 12, 12);
+        const imageData = ctx.getImageData(0, 0, 24, 24);
+        mapInstance.addImage('exclamation-icon', imageData);
+      }
+
 
       // Base circles
       mapInstance.addLayer({
@@ -135,13 +150,10 @@ export default function MapLibrePlanViewer({ url, onPlanClick, onPinClick, tasks
         type: 'symbol',
         source: 'tasks',
         layout: {
-          'text-field': '!',
-          'text-size': 12,
-          'text-rotation-alignment': 'viewport',
-          'text-allow-overlap': true
-        },
-        paint: {
-          'text-color': '#ffffff'
+          'icon-image': 'exclamation-icon',
+          'icon-size': 0.8,
+          'icon-rotation-alignment': 'viewport',
+          'icon-allow-overlap': true
         }
       });
 
@@ -159,8 +171,12 @@ export default function MapLibrePlanViewer({ url, onPlanClick, onPinClick, tasks
 
       // Map clicks
       mapInstance.on('click', (e: maplibregl.MapMouseEvent) => {
-        // If clicking a pin
-        const features = mapInstance.queryRenderedFeatures(e.point, { layers: ['tasks-layer'] });
+        // Use a small hitbox (e.g. 15px radius) for better touch targeting
+        const bbox: [maplibregl.PointLike, maplibregl.PointLike] = [
+          [e.point.x - 15, e.point.y - 15],
+          [e.point.x + 15, e.point.y + 15]
+        ];
+        const features = mapInstance.queryRenderedFeatures(bbox, { layers: ['tasks-layer'] });
         if (features.length > 0) {
           const clickedTaskId = features[0].properties.id;
           const task = tasks.find(t => t.id === clickedTaskId);

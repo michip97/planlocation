@@ -1,6 +1,6 @@
 import fs from 'fs';
 import { Router } from 'express';
-import { uploadDocument, getDocumentFile, getDocumentTilesMetadata, getDocumentTile } from '../controllers/document.controller';
+import { uploadDocument, getDocumentFile, getDocumentTilesMetadata, getDocumentTile, deleteDocument } from '../controllers/document.controller';
 import { authenticateToken } from '../middlewares/auth';
 import multer from 'multer';
 import path from 'path';
@@ -39,6 +39,7 @@ router.use(authenticateToken); // Protect routes
 
 router.post('/project/:projectId', upload.single('file'), uploadDocument);
 router.get('/:documentId/file', getDocumentFile);
+router.delete('/:documentId', deleteDocument);
 router.get('/:documentId/tiles/metadata.json', getDocumentTilesMetadata);
 router.get('/:documentId/tiles/:z/:x/:y.webp', getDocumentTile);
 

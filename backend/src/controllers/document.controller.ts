@@ -206,3 +206,41 @@ export const getDocumentTile = async (req: AuthRequest, res: Response) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 };
+
+export const deleteDocument = async (req: AuthRequest, res: Response) => {
+  const tenantId = req.user?.tenantId;
+  const documentId = req.params.documentId as string;
+
+  if (!tenantId) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+
+  try {
+    const document = await prisma.document.findFirst({
+      where: { id: documentId, project: { tenantId } }
+    });
+
+    if (!document) {
+      res.status(404).json({ error: 'Document not found' });
+      return;
+    }
+
+    const filePath = path.join(__dirname, '../../uploads', document.storageRef);
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+
+    const tilesDirName = document.storageRef.replace('.pdf', '');
+    const outputDir = path.join(__dirname, '../../uploads/tiles', tilesDirName);
+    if (fs.existsSync(outputDir)) {
+      fs.rmSync(outputDir, { recursive: true, force: true });
+    }
+
+    await prisma.document.delete({ where: { id: document.id } });
+    res.status(204).end();
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
