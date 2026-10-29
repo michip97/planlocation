@@ -30,7 +30,7 @@ COPY --from=backend-builder /app/backend/prisma ./prisma
 
 # Copy frontend build output into backend public folder for static serving
 COPY --from=frontend-builder /app/frontend/dist ./public
-COPY scripts/ /app/scripts/
+COPY scripts/ ./scripts/
 
 # Setup volumes for uploads and DB
 RUN mkdir -p uploads prisma/migrations
