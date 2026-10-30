@@ -1,31 +1,37 @@
-version: '3.8'
-
 services:
   app:
     image: ghcr.io/${REPO}-app:latest
-    restart: unless-stopped
+    container_name: plansync-app-prod
+    restart: always
+    # Provide 512 MB /dev/shm RAM filesystem inside the container for zero-disk-thrashing libvips tiling
+    shm_size: '512mb'
     volumes:
       - plansync_uploads:/app/backend/uploads
+      - plansync_tiles:/app/storage/tiles
     environment:
       - NODE_ENV=production
+      - PORT=3000
+      - TILES_STORAGE_DIR=/app/storage/tiles
       - DATABASE_URL=${DATABASE_URL}
       - JWT_SECRET=${JWT_SECRET}
-      - PORT=3000
     networks:
       - webproxy
-      - postgres_network # Assuming the shared db is on a specific network, this can be configured if needed, but often the DATABASE_URL handles routing (e.g., host IP or explicit network DNS)
+      - shared-database
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.plansync.rule=Host(`${DOMAIN}`)"
+      - "traefik.docker.network=webproxy"
+      - "traefik.http.routers.plansync.rule=Host(`${DOMAIN:-planlocationtest.michaelportmann.ch}`)"
       - "traefik.http.routers.plansync.entrypoints=websecure"
+      - "traefik.http.routers.plansync.tls=true"
       - "traefik.http.routers.plansync.tls.certresolver=myresolver"
       - "traefik.http.services.plansync.loadbalancer.server.port=3000"
 
 volumes:
   plansync_uploads:
+  plansync_tiles:
 
 networks:
   webproxy:
     external: true
-  postgres_network:
+  shared-database:
     external: true

@@ -1,6 +1,0 @@
-
-> backend@1.0.0 dev
-> tsx watch src/server.ts
-
-◇ injected env (0) from .env
-Server is running on port 3000

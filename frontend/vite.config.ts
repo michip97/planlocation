@@ -5,6 +5,9 @@ import { VitePWA } from 'vite-plugin-pwa'
 
 // https://vite.dev/config/
 export default defineConfig({
+  optimizeDeps: {
+    include: ['pmtiles', 'maplibre-gl']
+  },
   server: {
     proxy: {
       '/api': {
@@ -18,7 +21,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.svg', 'icons.svg', 'sample.pdf'], // cache static assets
+      includeAssets: ['favicon.svg', 'icons.svg'], // cache static assets
       manifest: {
         name: 'PlanSync',
         short_name: 'PlanSync',

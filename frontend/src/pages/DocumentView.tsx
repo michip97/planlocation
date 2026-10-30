@@ -1,16 +1,14 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import PDFViewer from '../components/PDFViewer';
-import TaskMarker from '../components/TaskMarker';
+import MapLibrePlanViewer from '../components/MapLibrePlanViewer';
 import TaskSidebar from '../components/TaskSidebar';
 import type { Task, Project, Document } from '../types';
 import { ArrowLeft, Cloud, CloudOff } from 'lucide-react';
 import { addToSyncQueue, processSyncQueue } from '../utils/syncManager';
 import {
   cacheTasks, getCachedTasks,
-  cacheProjectDetails, getCachedProjectDetails,
-  cachePdfBlob, getCachedPdfBlob
+  cacheProjectDetails, getCachedProjectDetails
 } from '../utils/offlineCache';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -22,7 +20,6 @@ export default function DocumentView() {
   const [activeTask, setActiveTask] = useState<Task | null>(null);
   const [project, setProject] = useState<Project | null>(null);
   const [document, setDocument] = useState<Document | null>(null);
-  const [pdfUrl, setPdfUrl] = useState<string>('');
   const [isOnline, setIsOnline] = useState<boolean>(navigator.onLine);
 
   const token = localStorage.getItem('token');
@@ -107,67 +104,34 @@ export default function DocumentView() {
       }
     };
 
-    const fetchPdfBlob = async () => {
-      if (navigator.onLine) {
-        try {
-          const res = await axios.get(`/api/documents/${documentId}/file`, {
-            headers: { Authorization: `Bearer ${token}` },
-            responseType: 'blob'
-          });
-          const url = URL.createObjectURL(res.data);
-          setPdfUrl(url);
-          await cachePdfBlob(documentId, res.data);
-        } catch (e) {
-          console.error("Failed to fetch PDF", e);
-          const cachedBlob = await getCachedPdfBlob(documentId);
-          if (cachedBlob) {
-            setPdfUrl(URL.createObjectURL(cachedBlob));
-          }
-        }
-      } else {
-        const cachedBlob = await getCachedPdfBlob(documentId);
-        if (cachedBlob) {
-          setPdfUrl(URL.createObjectURL(cachedBlob));
-        } else {
-          console.warn("Offline: PDF cannot be loaded currently.");
-        }
-      }
-    };
-
     fetchDetails();
-    fetchPdfBlob();
     fetchTasks();
-
-    return () => {
-      if (pdfUrl) URL.revokeObjectURL(pdfUrl);
-    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, documentId, token, navigate]);
 
-  const handlePdfClick = async (e: React.MouseEvent, pageNumber: number) => {
-    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    const x = (e.clientX - rect.left) / rect.width;
-    const y = (e.clientY - rect.top) / rect.height;
-
+  const handlePlanClick = async ({ x, y }: { x: number; y: number }) => {
     const newTask: Task = {
       id: uuidv4(),
       title: 'Neue Pendenz',
       description: '',
       projectId: projectId || '',
       documentId: documentId || '',
-      page: pageNumber,
+      page: currentPage,
       position: { x, y },
       status: 'Offen',
       priority: 'Normal',
       createdAt: new Date().toISOString(),
     };
 
-    const updatedTasks = [...tasks, newTask];
-    setTasks(updatedTasks);
+    let updatedTasksSnapshot: Task[] = [];
+    setTasks(prev => {
+      updatedTasksSnapshot = [...prev, newTask];
+      return updatedTasksSnapshot;
+    });
     setActiveTask(newTask);
 
     if (projectId && documentId) {
-      await cacheTasks(projectId, documentId, updatedTasks);
+      await cacheTasks(projectId, documentId, updatedTasksSnapshot);
     }
 
     const apiPayload = {
@@ -196,12 +160,15 @@ export default function DocumentView() {
   };
 
   const handleTaskUpdate = async (updatedTask: Task) => {
-    const updatedTasks = tasks.map(t => t.id === updatedTask.id ? updatedTask : t);
-    setTasks(updatedTasks);
+    let updatedTasksSnapshot: Task[] = [];
+    setTasks(prev => {
+      updatedTasksSnapshot = prev.map(t => t.id === updatedTask.id ? updatedTask : t);
+      return updatedTasksSnapshot;
+    });
     setActiveTask(updatedTask);
 
     if (projectId && documentId) {
-      await cacheTasks(projectId, documentId, updatedTasks);
+      await cacheTasks(projectId, documentId, updatedTasksSnapshot);
     }
 
     if (isOnline && token) {
@@ -262,33 +229,18 @@ export default function DocumentView() {
         </div>
 
         <div className="flex-1 relative overflow-hidden">
-          {pdfUrl ? (
-            <PDFViewer
-              url={pdfUrl}
-              onClick={handlePdfClick}
-            >
-              {formattedTasks
-                .filter(t => t.page === currentPage)
-                .map(task => (
-                  <TaskMarker
-                    key={task.id}
-                    task={task}
-                    isActive={activeTask?.id === task.id}
-                    onClick={handleTaskClick}
-                  />
-                ))
-              }
-            </PDFViewer>
+          {documentId ? (
+            <MapLibrePlanViewer
+              url={`/api/documents/${documentId}/file`}
+              documentId={documentId}
+              onPlanClick={handlePlanClick}
+              onPinClick={handleTaskClick}
+              tasks={formattedTasks.filter(t => t.page === currentPage)}
+              activeTaskId={activeTask?.id || null}
+            />
           ) : (
             <div className="w-full h-full flex flex-col items-center justify-center bg-slate-900 text-slate-400">
-              {isOnline ? (
-                 <>
-                   <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mb-4"></div>
-                   <p>Plan wird vom Server abgerufen...</p>
-                 </>
-              ) : (
-                 <p>Du bist offline. Der Plan wurde noch nicht lokal gespeichert.</p>
-              )}
+              <p>Kein Dokument ausgewählt.</p>
             </div>
           )}
         </div>

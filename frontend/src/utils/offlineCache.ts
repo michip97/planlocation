@@ -1,6 +1,11 @@
 import localforage from 'localforage';
 import axios from 'axios';
 import type { Task, Project } from '../types';
+import {
+  savePlanToCache,
+  deleteCachedPlan,
+  type PlanTileMetadata
+} from '../services/planOfflineCache';
 
 // Registry of explicitly downloaded projects
 export const getOfflineProjectsRegistry = async (): Promise<string[]> => {
@@ -42,20 +47,12 @@ export const getCachedProjectDetails = async (projectId: string): Promise<Projec
   return await localforage.getItem(`project_${projectId}`);
 };
 
-export const cachePdfBlob = async (documentId: string, blob: Blob) => {
-  await localforage.setItem(`pdf_${documentId}`, blob);
-};
-
-export const getCachedPdfBlob = async (documentId: string): Promise<Blob | null> => {
-  return await localforage.getItem(`pdf_${documentId}`);
-};
-
 // Remove a project completely from cache
 export const removeProjectData = async (project: Project) => {
   await localforage.removeItem(`project_${project.id}`);
   for (const doc of project.documents) {
-    await localforage.removeItem(`pdf_${doc.id}`);
     await localforage.removeItem(`tasks_${project.id}_${doc.id}`);
+    await deleteCachedPlan(doc.id);
   }
   await removeProjectFromRegistry(project.id);
 };
@@ -82,7 +79,7 @@ export const downloadProjectForOffline = async (
 
     const progressPerDoc = 90 / documents.length;
 
-    // 2. Fetch Tasks and PDFs for each document
+    // 2. Fetch Tasks and persist .pmtiles + metadata.json in IndexedDB for each document
     for (let i = 0; i < documents.length; i++) {
       const doc = documents[i];
       const baseProgress = 10 + (i * progressPerDoc);
@@ -92,22 +89,21 @@ export const downloadProjectForOffline = async (
         headers: { Authorization: `Bearer ${token}` }
       });
       await cacheTasks(project.id, doc.id, tasksRes.data);
-      onProgress(baseProgress + (progressPerDoc * 0.2)); // Tasks downloaded
+      onProgress(baseProgress + (progressPerDoc * 0.4));
 
-      // Fetch PDF Blob with onDownloadProgress for accurate tracking of large files
-      const pdfRes = await axios.get(`/api/documents/${doc.id}/file`, {
-        headers: { Authorization: `Bearer ${token}` },
-        responseType: 'blob',
-        onDownloadProgress: (progressEvent) => {
-          if (progressEvent.total) {
-            const percentCompleted = progressEvent.loaded / progressEvent.total;
-            const docPdfProgress = progressPerDoc * 0.8 * percentCompleted; // PDF is 80% of the document work
-            onProgress(baseProgress + (progressPerDoc * 0.2) + docPdfProgress);
-          }
-        }
-      });
+      // Fetch tile metadata and single-file .pmtiles archive and store in IndexedDB
+      const [metaRes, pmtilesRes] = await Promise.all([
+        axios.get<PlanTileMetadata>(`/api/documents/${doc.id}/tiles/metadata.json`, {
+          headers: { Authorization: `Bearer ${token}` }
+        }),
+        axios.get<ArrayBuffer>(`/api/documents/${doc.id}/tiles.pmtiles`, {
+          headers: { Authorization: `Bearer ${token}` },
+          responseType: 'arraybuffer'
+        })
+      ]);
 
-      await cachePdfBlob(doc.id, pdfRes.data);
+      await savePlanToCache(doc.id, pmtilesRes.data, metaRes.data);
+      onProgress(baseProgress + progressPerDoc);
     }
 
     onProgress(100);

@@ -45,6 +45,15 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Prepare target directory on VPS
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USERNAME }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            mkdir -p /opt/plansync
+
       - name: Copy docker-compose to VPS
         uses: appleboy/scp-action@master
         with:
@@ -61,27 +70,39 @@ jobs:
           username: ${{ secrets.VPS_USERNAME }}
           key: ${{ secrets.VPS_SSH_KEY }}
           script: |
-            # Create directory if it doesn't exist
-            mkdir -p /opt/plansync
+            set -e
             cd /opt/plansync
 
             # Login to GHCR (Server needs access to pull images)
-            echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
 
-            # Export environment variables for docker-compose
-            export REPO="$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')"
-            export DATABASE_URL="${{ secrets.DATABASE_URL }}"
-            export JWT_SECRET="${{ secrets.JWT_SECRET }}"
-            export DOMAIN="${{ secrets.DOMAIN }}"
+            # Normalize REPO to lowercase and sanitize DOMAIN (strip http://, https://, and trailing /)
+            REPO_LOWER="$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')"
+            RAW_DOMAIN="${{ secrets.DOMAIN }}"
+            CLEAN_DOMAIN="$(echo "${RAW_DOMAIN:-planlocationtest.michaelportmann.ch}" | sed -E 's#^https?://##; s#/.*$##')"
 
-            # Ensure the external networks exist (for traefik and shared DB)
+            # Persist environment variables for docker compose
+            cat <<EOF > /opt/plansync/.env
+            REPO=${REPO_LOWER}
+            DOMAIN=${CLEAN_DOMAIN}
+            DATABASE_URL=${{ secrets.DATABASE_URL }}
+            JWT_SECRET=${{ secrets.JWT_SECRET }}
+            EOF
+            chmod 600 /opt/plansync/.env
+
+            # Ensure the external networks exist (for Traefik reverse proxy and shared PostgreSQL)
             docker network inspect webproxy >/dev/null 2>&1 || docker network create webproxy
-            docker network inspect postgres_network >/dev/null 2>&1 || docker network create postgres_network
+            docker network inspect shared-database >/dev/null 2>&1 || docker network create shared-database
 
-            # Pull new images and recreate containers
+            # Connect the existing traefik-prod container (from the portfolio stack) to webproxy
+            # so it can route traffic to plansync-app-prod and issue Let's Encrypt SSL via myresolver
+            if docker ps --format '{{.Names}}' | grep -q '^traefik-prod$'; then
+              docker network connect webproxy traefik-prod 2>/dev/null || true
+            fi
+
+            # Pull new image and recreate container with zero unnecessary downtime
             docker compose -f docker-compose.prod.yml pull
-            docker compose -f docker-compose.prod.yml down
-            docker compose -f docker-compose.prod.yml up -d --force-recreate
+            docker compose -f docker-compose.prod.yml up -d --force-recreate --remove-orphans
 
-            # Clean up old images
-            docker image prune -af
+            # Clean up dangling images
+            docker image prune -f
