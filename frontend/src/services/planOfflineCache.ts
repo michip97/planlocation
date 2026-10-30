@@ -379,3 +379,118 @@ export function schedulePlanBackgroundPrefetch(options: {
     }
   };
 }
+
+/**
+ * Loads a plan's `metadata.json` and complete `.pmtiles` archive in a single parallel pass
+ * (if not already in RAM/IndexedDB), stores both in RAM + IndexedDB, and returns the
+ * `CachedPlanRecord` so `MapLibrePlanViewer` can serve 100% of all zoom levels directly
+ * from `FileSource` in RAM with 0 network requests while zooming or panning.
+ */
+export async function ensurePlanLoadedOfflineFirst(
+  documentId: string,
+  token?: string | null,
+  onProgress?: (percent: number) => void
+): Promise<CachedPlanRecord> {
+  const cached = await getCachedPlan(documentId);
+  if (cached) {
+    onProgress?.(100);
+    return cached;
+  }
+
+  let inFlight = activePrefetches.get(documentId);
+  if (!inFlight) {
+    inFlight = (async () => {
+      try {
+        onProgress?.(5);
+        const headers: HeadersInit = token ? { Authorization: `Bearer ${token}` } : {};
+        const [metaRes, pmtilesRes] = await Promise.all([
+          fetch(`/api/documents/${documentId}/tiles/metadata.json`, { headers }),
+          fetch(`/api/documents/${documentId}/tiles.pmtiles`, { headers })
+        ]);
+
+        if (!metaRes.ok || !pmtilesRes.ok) {
+          throw new Error(`Fehler beim Laden der Plandaten (${metaRes.status}/${pmtilesRes.status})`);
+        }
+
+        const metadata: PlanTileMetadata = await metaRes.json();
+        onProgress?.(15);
+
+        let blob: Blob;
+        const contentLengthHeader = pmtilesRes.headers.get('Content-Length');
+        const totalBytes = contentLengthHeader ? parseInt(contentLengthHeader, 10) : 0;
+
+        if (pmtilesRes.body && totalBytes > 0) {
+          const reader = pmtilesRes.body.getReader();
+          const chunks: Uint8Array[] = [];
+          let receivedBytes = 0;
+
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            if (value) {
+              chunks.push(value);
+              receivedBytes += value.byteLength;
+              const pct = Math.min(98, 15 + Math.round((receivedBytes / totalBytes) * 83));
+              onProgress?.(pct);
+            }
+          }
+
+          blob = new Blob(chunks as BlobPart[], { type: 'application/vnd.pmtiles' });
+        } else {
+          blob = await pmtilesRes.blob();
+        }
+
+        if (blob.size === 0) {
+          throw new Error('Leere PMTiles-Datei vom Server erhalten.');
+        }
+
+        const saved = await savePlanToCache(documentId, blob, metadata);
+        onProgress?.(100);
+        return saved;
+      } finally {
+        activePrefetches.delete(documentId);
+      }
+    })();
+
+    activePrefetches.set(documentId, inFlight);
+  }
+
+  const result = await inFlight;
+  if (!result) {
+    throw new Error('Plan konnte nicht geladen werden.');
+  }
+  return result;
+}
+
+/**
+ * Quietly pre-warms a list of document IDs into RAM and IndexedDB in the background
+ * (e.g. while the user is browsing the Dashboard or right after uploading a PDF)
+ * so clicking on a plan opens it instantaneously (0ms network wait).
+ */
+export function prewarmPlansInBackground(documentIds: string[], token?: string | null): void {
+  if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+
+  const run = async () => {
+    for (const docId of documentIds) {
+      if (!docId) continue;
+      try {
+        const existing = await getCachedPlan(docId);
+        if (!existing) {
+          await ensurePlanLoadedOfflineFirst(docId, token);
+        }
+      } catch {
+        // Ignore background pre-warm errors silently
+      }
+    }
+  };
+
+  if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+    window.requestIdleCallback(() => {
+      void run();
+    }, { timeout: 1000 });
+  } else {
+    setTimeout(() => {
+      void run();
+    }, 250);
+  }
+}

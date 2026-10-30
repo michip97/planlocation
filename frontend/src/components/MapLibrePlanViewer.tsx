@@ -6,7 +6,7 @@ import { Protocol } from 'pmtiles';
 import { ZoomIn, ZoomOut, Maximize, RotateCcw, Loader2, CheckCircle2, CloudDownload } from 'lucide-react';
 import type { Task } from '../types';
 import {
-  getCachedPlan,
+  ensurePlanLoadedOfflineFirst,
   createHybridPmtilesInstance,
   schedulePlanBackgroundPrefetch,
   type PlanTileMetadata
@@ -248,6 +248,7 @@ export default function MapLibrePlanViewer({
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<maplibregl.Map | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadProgress, setLoadProgress] = useState<number>(0);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [metadata, setMetadata] = useState<PlanTileMetadata | null>(null);
   const [bearing, setBearing] = useState(0);
@@ -291,32 +292,27 @@ export default function MapLibrePlanViewer({
 
     let cancelled = false;
     setIsLoading(true);
+    setLoadProgress(0);
     setErrorMsg(null);
     localPmtilesBlobRef.current = null;
 
-    const loadMetadataOfflineFirst = async () => {
+    const loadPlanData = async () => {
       try {
-        // 1. Offline-First: Check if plan (.pmtiles Blob + metadata.json) is already cached in IndexedDB
-        const cachedPlan = await getCachedPlan(resolvedDocumentId);
-        if (cachedPlan) {
-          if (!cancelled) {
-            localPmtilesBlobRef.current = cachedPlan.pmtilesBlob;
-            setCacheStatus('offline-ready');
-            setMetadata(cachedPlan.metadata);
-          }
-          return;
-        }
-
-        // 2. Not cached yet: Fetch metadata.json from server and stream visible tiles via HTTP Range requests
         const token = localStorage.getItem('token');
-        const res = await fetch(`/api/documents/${resolvedDocumentId}/tiles/metadata.json`, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {}
-        });
-        if (!res.ok) throw new Error('Metadaten konnten nicht geladen werden.');
-        const data: PlanTileMetadata = await res.json();
+        const record = await ensurePlanLoadedOfflineFirst(
+          resolvedDocumentId,
+          token,
+          (pct) => {
+            if (!cancelled) {
+              setLoadProgress(pct);
+            }
+          }
+        );
+
         if (!cancelled) {
-          setCacheStatus('range-streaming');
-          setMetadata(data);
+          localPmtilesBlobRef.current = record.pmtilesBlob;
+          setCacheStatus('offline-ready');
+          setMetadata(record.metadata);
         }
       } catch (err) {
         console.error(err);
@@ -327,7 +323,7 @@ export default function MapLibrePlanViewer({
       }
     };
 
-    void loadMetadataOfflineFirst();
+    void loadPlanData();
 
     return () => {
       cancelled = true;
@@ -465,8 +461,6 @@ export default function MapLibrePlanViewer({
     mapInstance.on('rotate', () => {
       setBearing(Math.round(mapInstance.getBearing()));
     });
-
-    let loadingFallbackTimer: ReturnType<typeof setTimeout> | null = null;
 
     mapInstance.on('load', () => {
       // Fit initial viewport before adding raster source so MapLibre only requests the target zoom tiles
@@ -701,49 +695,30 @@ export default function MapLibrePlanViewer({
         }
       });
 
-      // Reveal the viewer as soon as the visible `plan-tiles` have loaded via HTTP 206 Range requests
-      const handleSourceData = (e: maplibregl.MapSourceDataEvent) => {
-        if (e.sourceId === 'plan-tiles' && e.isSourceLoaded) {
-          setIsLoading(false);
-          mapInstance.off('sourcedata', handleSourceData);
-        }
-      };
-      mapInstance.on('sourcedata', handleSourceData);
+      // Since localPmtilesBlobRef is already in RAM (FileSource), tiles render from memory with 0ms network delay
+      setIsLoading(false);
 
-      // Fallback timer in case `sourcedata` fires before listener attachment (e.g. in unit tests or cached blob)
-      loadingFallbackTimer = setTimeout(() => {
-        setIsLoading(false);
-      }, 600);
-
-      // Wait until the initial visible viewport tiles have finished rendering ('idle')
-      // BEFORE starting the background full-file prefetch into IndexedDB.
-      mapInstance.once('idle', () => {
-        setIsLoading(false);
-        if (!hybridSource.isUsingLocalBlob()) {
-          cancelBackgroundPrefetch = schedulePlanBackgroundPrefetch({
-            documentId: resolvedDocumentId,
-            pmtilesUrl,
-            token,
-            metadata,
-            hybridSource,
-            onStatusChange: (status) => {
-              if (status === 'prefetching') {
-                setCacheStatus('prefetching');
-              } else if (status === 'offline-ready') {
-                setCacheStatus('offline-ready');
-              }
+      if (!hybridSource.isUsingLocalBlob()) {
+        cancelBackgroundPrefetch = schedulePlanBackgroundPrefetch({
+          documentId: resolvedDocumentId,
+          pmtilesUrl,
+          token,
+          metadata,
+          hybridSource,
+          onStatusChange: (status) => {
+            if (status === 'prefetching') {
+              setCacheStatus('prefetching');
+            } else if (status === 'offline-ready') {
+              setCacheStatus('offline-ready');
             }
-          });
-        }
-      });
+          }
+        });
+      }
     });
 
     map.current = mapInstance;
 
     return () => {
-      if (loadingFallbackTimer) {
-        clearTimeout(loadingFallbackTimer);
-      }
       cancelBackgroundPrefetch?.();
       mapInstance.remove();
       map.current = null;
@@ -849,12 +824,20 @@ export default function MapLibrePlanViewer({
                 <div>{errorMsg}</div>
               </div>
             ) : (
-              <>
-                <Loader2 size={48} className="animate-spin text-blue-400 mb-4" />
-                <div className="text-lg font-medium tracking-wide">
-                  Plan wird geladen...
+              <div className="flex flex-col items-center w-64">
+                <Loader2 size={44} className="animate-spin text-blue-400 mb-4" />
+                <div className="text-base font-medium tracking-wide mb-2">
+                  Plan wird geladen... {loadProgress > 0 ? `${loadProgress}%` : ''}
                 </div>
-              </>
+                {loadProgress > 0 && (
+                  <div className="w-full bg-slate-700 rounded-full h-2 overflow-hidden">
+                    <div
+                      className="bg-blue-500 h-2 rounded-full transition-all duration-150"
+                      style={{ width: `${loadProgress}%` }}
+                    />
+                  </div>
+                )}
+              </div>
             )}
           </div>
         )}

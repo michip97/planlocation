@@ -17,6 +17,37 @@ const tileGenerationLocks = new Map<string, Promise<void>>();
 // Cache PMTiles reader instances per file path + mtimeMs for fast direct tile lookups
 const pmtilesReaderCache = new Map<string, { mtimeMs: number; pm: PMTiles }>();
 
+// Cache verified document ownership (documentId:tenantId -> { id, storageRef }) for 5 minutes
+// so concurrent Range/tile/metadata requests do not bottleneck on PostgreSQL JOIN queries.
+const documentAuthCache = new Map<string, { id: string; storageRef: string; expiresAt: number }>();
+
+const getAuthorizedDocument = async (
+  documentId: string,
+  tenantId: string
+): Promise<{ id: string; storageRef: string } | null> => {
+  const key = `${documentId}:${tenantId}`;
+  const cached = documentAuthCache.get(key);
+  if (cached && cached.expiresAt > Date.now()) {
+    return { id: cached.id, storageRef: cached.storageRef };
+  }
+
+  const doc = await prisma.document.findFirst({
+    where: { id: documentId, project: { tenantId } },
+    select: { id: true, storageRef: true }
+  });
+
+  if (!doc) {
+    return null;
+  }
+
+  documentAuthCache.set(key, {
+    id: doc.id,
+    storageRef: doc.storageRef,
+    expiresAt: Date.now() + 5 * 60 * 1000
+  });
+  return doc;
+};
+
 class LocalFileSource implements Source {
   private filePath: string;
 
@@ -224,9 +255,7 @@ export const getDocumentPmtiles = async (req: AuthRequest, res: Response) => {
   }
 
   try {
-    const document = await prisma.document.findFirst({
-      where: { id: documentId, project: { tenantId } }
-    });
+    const document = await getAuthorizedDocument(documentId, tenantId);
 
     if (!document) {
       res.status(404).json({ error: 'Document not found' });
@@ -275,9 +304,7 @@ export const getDocumentTilesMetadata = async (req: AuthRequest, res: Response) 
   }
 
   try {
-    const document = await prisma.document.findFirst({
-      where: { id: documentId, project: { tenantId } }
-    });
+    const document = await getAuthorizedDocument(documentId, tenantId);
 
     if (!document) {
       res.status(404).json({ error: 'Document not found' });
@@ -330,9 +357,7 @@ export const getDocumentTile = async (req: AuthRequest, res: Response) => {
   }
 
   try {
-    const document = await prisma.document.findFirst({
-      where: { id: documentId, project: { tenantId } }
-    });
+    const document = await getAuthorizedDocument(documentId, tenantId);
 
     if (!document) {
       res.status(404).json({ error: 'Document not found' });
@@ -393,6 +418,8 @@ export const deleteDocument = async (req: AuthRequest, res: Response) => {
       res.status(404).json({ error: 'Document not found' });
       return;
     }
+
+    documentAuthCache.delete(`${documentId}:${tenantId}`);
 
     const filePath = path.join(__dirname, '../../uploads', document.storageRef);
     if (fs.existsSync(filePath)) {

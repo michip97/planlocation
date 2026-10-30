@@ -11,6 +11,7 @@ import {
   removeProjectData,
   getCachedProjectDetails
 } from '../utils/offlineCache';
+import { prewarmPlansInBackground } from '../services/planOfflineCache';
 
 interface UploadStatus {
   progress: number;
@@ -39,10 +40,15 @@ export default function Dashboard() {
   const fetchProjects = useCallback(async () => {
     if (navigator.onLine) {
       try {
-        const response = await axios.get('/api/projects', {
+        const response = await axios.get<Project[]>('/api/projects', {
           headers: { Authorization: `Bearer ${token}` }
         });
-        setProjects(response.data);
+        const loadedProjects = response.data;
+        setProjects(loadedProjects);
+        const docIds = loadedProjects.flatMap(p => (p.documents || []).map(d => d.id));
+        if (docIds.length > 0) {
+          prewarmPlansInBackground(docIds, token);
+        }
       } catch (error) {
         console.error('Failed to fetch projects', error);
         if (axios.isAxiosError(error) && error.response?.status === 401) {
