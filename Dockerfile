@@ -13,13 +13,13 @@ COPY backend/package*.json ./
 COPY backend/prisma ./prisma/
 RUN npm ci
 COPY backend/ ./
-RUN npm run build
+RUN npx prisma generate && npm run build
 
 # Stage 3: Production Server
 FROM node:20-bookworm
 WORKDIR /app/backend
 
-# Install libvips for maplibre-gl map tile generation
+# Install libvips and poppler-utils for PDF-to-PMTiles generation
 RUN apt-get update && apt-get install -y libvips-tools poppler-utils bc && rm -rf /var/lib/apt/lists/*
 
 # Copy backend build and dependencies
@@ -30,12 +30,16 @@ COPY --from=backend-builder /app/backend/prisma ./prisma
 
 # Copy frontend build output into backend public folder for static serving
 COPY --from=frontend-builder /app/frontend/dist ./public
-COPY scripts/ ./scripts/
 
-# Setup volumes for uploads and DB
-RUN mkdir -p uploads prisma/migrations
+# Copy tiling scripts to both /app/scripts and /app/backend/scripts
+COPY scripts/ /app/scripts/
+COPY scripts/ ./scripts/
+RUN chmod +x /app/scripts/*.sh ./scripts/*.sh
+
+# Setup persistent directories for PDF uploads, single-file .pmtiles storage, and DB migrations
+RUN mkdir -p /app/backend/uploads /app/storage/tiles prisma/migrations
 
 EXPOSE 3000
 
-# Start script
-CMD ["sh", "-c", "npx prisma db push && node dist/server.js"]
+# Push schema and start production server
+CMD ["sh", "-c", "npx prisma db push --skip-generate && node dist/server.js"]

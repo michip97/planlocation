@@ -5,18 +5,17 @@ PlanSync ist eine Offline-First Progressive Web App (PWA) für Architektur- und 
 ## Features
 
 - **Multi-Tenant (Firmen & Benutzer):** Strikte Mandantentrennung auf Datenbankebene. Benutzer sehen nur Projekte und Pendenzen ihrer eigenen Firma.
-- **Performanter PDF-Viewer (Pan & Zoom):** Optimiert für große A0-Architekturpläne. Rendering über `pdf.js` mit Web-Workern. Navigation via Google-Maps-artigem Panning (`react-zoom-pan-pinch`).
-- **Pendenzen-Pins auf PDFs:** Pendenzen werden über normalisierte Koordinaten pixelgenau auf den Plänen platziert.
-- **Vollständige Offline-Fähigkeit (PWA):**
-  - Die App-Shell wird per Service-Worker (`vite-plugin-pwa`) offline verfügbar gemacht.
-  - Projekte und PDF-Pläne können explizit heruntergeladen werden. Die Speicherung erfolgt in IndexedDB (`localforage`).
-  - Neue Pendenzen und Änderungen werden offline in eine lokale Queue geschrieben und asynchron zum Backend übertragen, sobald die Verbindung wiederhergestellt ist.
+- **Hochperformanter MapLibre-Planviewer (Single-File `.pmtiles`):** Optimiert für große A0-Architekturpläne (300 DPI). PDFs werden serverseitig mit `libvips` im RAM (`/dev/shm`) gekachelt und in eine einzige `<documentId>.pmtiles`-Datei gepackt.
+- **Offline-First & Smart Background Prefetching:**
+  - Beim ersten Öffnen eines Plans werden sichtbare Kacheln ohne Wartezeit per `HTTP 206 Partial Content` Range-Request geladen, während im Hintergrund automatisch das komplette `.pmtiles`-Archiv in die Browser-`IndexedDB` geladen wird.
+  - Sobald der Plan lokal gecacht ist, erfolgen sämtliche Kachel-Abrufe beim Zoomen, Verschieben und Drehen zu 100 % offline aus dem lokalen Speicher (`0` Server-Requests).
+- **Pendenzen-Pins auf Bauplänen:** Pendenzen werden über normalisierte Koordinaten (`x: 0..1, y: 0..1`) unter Berücksichtigung des `libvips`-Grid-Paddings pixelgenau auf den Plänen platziert und per HTML5-Canvas-Sprites (inkl. Nummer und Statusfarbe) komplett ohne externen Font-Server gerendert.
 - **Export & QR-Codes:** Generierung von PDF-Berichten der Pendenzen (`jspdf`) sowie scannbaren QR-Codes, um Projekte schnell auf der Baustelle zu öffnen.
 
 ## Tech-Stack
 
-- **Frontend:** React, TypeScript, Vite, Tailwind CSS v4, React Router, Lucide Icons, Axios, Localforage, Playwright (für E2E Testing).
-- **Backend:** Node.js, Express, TypeScript.
+- **Frontend:** React 19, TypeScript, Vite, MapLibre GL JS v6, PMTiles v3 (`pmtiles`), Tailwind CSS v4, React Router, Lucide Icons, IndexedDB (`planOfflineCache` & `localforage`).
+- **Backend:** Node.js, Express, TypeScript, `libvips` (`vips dzsave` + `scripts/pack-pmtiles.mjs`).
 - **Datenbank:** PostgreSQL (via Prisma ORM).
 - **Sicherheit:** JWT für die Authentifizierung, `bcryptjs` für sicheres Passwort-Hashing, strikte Überprüfung des `tenantId` in jeder API-Route.
 

@@ -1,6 +1,11 @@
 import localforage from 'localforage';
 import axios from 'axios';
 import type { Task, Project } from '../types';
+import {
+  savePlanToCache,
+  deleteCachedPlan,
+  type PlanTileMetadata
+} from '../services/planOfflineCache';
 
 // Registry of explicitly downloaded projects
 export const getOfflineProjectsRegistry = async (): Promise<string[]> => {
@@ -42,20 +47,12 @@ export const getCachedProjectDetails = async (projectId: string): Promise<Projec
   return await localforage.getItem(`project_${projectId}`);
 };
 
-export const cachePdfBlob = async (documentId: string, blob: Blob) => {
-  await localforage.setItem(`pdf_${documentId}`, blob);
-};
-
-export const getCachedPdfBlob = async (documentId: string): Promise<Blob | null> => {
-  return await localforage.getItem(`pdf_${documentId}`);
-};
-
 // Remove a project completely from cache
 export const removeProjectData = async (project: Project) => {
   await localforage.removeItem(`project_${project.id}`);
   for (const doc of project.documents) {
-    await localforage.removeItem(`pdf_${doc.id}`);
     await localforage.removeItem(`tasks_${project.id}_${doc.id}`);
+    await deleteCachedPlan(doc.id);
   }
   await removeProjectFromRegistry(project.id);
 };
@@ -82,7 +79,7 @@ export const downloadProjectForOffline = async (
 
     const progressPerDoc = 90 / documents.length;
 
-    // 2. Fetch Tasks and PDFs for each document
+    // 2. Fetch Tasks and persist .pmtiles + metadata.json in IndexedDB for each document
     for (let i = 0; i < documents.length; i++) {
       const doc = documents[i];
       const baseProgress = 10 + (i * progressPerDoc);
@@ -92,11 +89,21 @@ export const downloadProjectForOffline = async (
         headers: { Authorization: `Bearer ${token}` }
       });
       await cacheTasks(project.id, doc.id, tasksRes.data);
-      onProgress(baseProgress + (progressPerDoc * 0.2)); // Tasks downloaded
+      onProgress(baseProgress + (progressPerDoc * 0.4));
 
-      // We no longer download the monolithic PDF Blob for offline use
-      // With the new Tiling Pipeline via MapLibre, tiles will be cached
-      // dynamically by the Service Worker when requested during online browsing.
+      // Fetch tile metadata and single-file .pmtiles archive and store in IndexedDB
+      const [metaRes, pmtilesRes] = await Promise.all([
+        axios.get<PlanTileMetadata>(`/api/documents/${doc.id}/tiles/metadata.json`, {
+          headers: { Authorization: `Bearer ${token}` }
+        }),
+        axios.get<ArrayBuffer>(`/api/documents/${doc.id}/tiles.pmtiles`, {
+          headers: { Authorization: `Bearer ${token}` },
+          responseType: 'arraybuffer'
+        })
+      ]);
+
+      await savePlanToCache(doc.id, pmtilesRes.data, metaRes.data);
+      onProgress(baseProgress + progressPerDoc);
     }
 
     onProgress(100);
