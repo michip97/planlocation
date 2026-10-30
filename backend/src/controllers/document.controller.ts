@@ -45,14 +45,14 @@ export const uploadDocument = async (req: AuthRequest, res: Response) => {
     });
 
     // Generate tiles synchronously
-    const generateTilesScript = path.join(__dirname, '../../../scripts/generate-tiles.sh');
+    const generateTilesScript = path.join(__dirname, '../../../../scripts/generate-tiles.sh');
     const inputPdf = file.path;
     const tilesDirName = file.filename.replace('.pdf', '');
     const outputDir = path.join(__dirname, '../../uploads/tiles', tilesDirName);
 
     try {
       const { execSync } = require('child_process');
-      execSync(`${generateTilesScript} "${inputPdf}" "${outputDir}"`, { stdio: 'inherit' });
+      execSync(`bash "${generateTilesScript}" "${inputPdf}" "${outputDir}"`, { stdio: 'inherit' });
     } catch (e) {
       console.error('Failed to generate tiles during upload:', e);
       // We don't fail the request, just log it. They will be generated lazily if needed.
@@ -149,10 +149,10 @@ export const getDocumentTilesMetadata = async (req: AuthRequest, res: Response) 
 
       console.log('Tiles not found. Generating lazily...');
       tileGenerationLocks[document.id] = true;
-      const generateTilesScript = path.join(__dirname, '../../../scripts/generate-tiles.sh');
+      const generateTilesScript = path.join(__dirname, '../../../../scripts/generate-tiles.sh');
       try {
         const { execSync } = require('child_process');
-        execSync(`${generateTilesScript} "${inputPdf}" "${outputDir}"`, { stdio: 'inherit' });
+        execSync(`bash "${generateTilesScript}" "${inputPdf}" "${outputDir}"`, { stdio: 'inherit' });
       } catch (e) {
         console.error('Failed to generate tiles lazily:', e);
         delete tileGenerationLocks[document.id];
