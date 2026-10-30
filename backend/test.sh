@@ -37,7 +37,11 @@ PROJECT_ID=$(echo $PROJECT_RESP | grep -o '"id":"[^"]*' | head -1 | grep -o '[^"
 echo "Created Project: $PROJECT_ID"
 
 # 3. Generate a quick sample PDF
-bash ../scripts/generate-sample-plans.sh
+if ! bash ../scripts/generate-sample-plans.sh; then
+    echo "Failed to generate sample plans!"
+    kill $SERVER_PID
+    exit 1
+fi
 
 # 4. Upload Document (PDF)
 echo "Uploading PDF..."

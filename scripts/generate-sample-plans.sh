@@ -1,8 +1,8 @@
 #!/bin/bash
 set -e
 
-if ! command -v gs &> /dev/null; then
-    echo "ghostscript not found, installing ghostscript..."
+if ! command -v gs &> /dev/null || ! command -v enscript &> /dev/null; then
+    echo "ghostscript or enscript not found, installing them..."
     sudo apt-get update
     sudo apt-get install -y ghostscript enscript
 fi
