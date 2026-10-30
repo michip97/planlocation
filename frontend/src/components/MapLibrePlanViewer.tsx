@@ -417,7 +417,11 @@ export default function MapLibrePlanViewer({
         ]
       },
       center: [center.lng, center.lat],
-      zoom: 0,
+      bounds: [
+        [topLeft.lng, bottomRight.lat],
+        [bottomRight.lng, topLeft.lat]
+      ],
+      fitBoundsOptions: { padding: 56 },
       minZoom: MIN_VIEW_ZOOM,
       maxZoom: maxViewZoom,
       renderWorldCopies: false, // Never repeat the plan horizontally
@@ -462,7 +466,18 @@ export default function MapLibrePlanViewer({
       setBearing(Math.round(mapInstance.getBearing()));
     });
 
+    let loadingFallbackTimer: ReturnType<typeof setTimeout> | null = null;
+
     mapInstance.on('load', () => {
+      // Fit initial viewport before adding raster source so MapLibre only requests the target zoom tiles
+      mapInstance.fitBounds(
+        [
+          [topLeft.lng, bottomRight.lat],
+          [bottomRight.lng, topLeft.lat]
+        ],
+        { padding: 56, duration: 0 }
+      );
+
       // 1. Exact plan paper footprint (subdivided so edges never wrap across the ±180° antimeridian)
       const planRing = buildSubdividedRectRing(
         topLeft.lng,
@@ -578,15 +593,6 @@ export default function MapLibrePlanViewer({
         }
       });
 
-      // Fit initial viewport cleanly to the actual architectural plan bounds with comfortable margin
-      mapInstance.fitBounds(
-        [
-          [topLeft.lng, bottomRight.lat],
-          [bottomRight.lng, topLeft.lat]
-        ],
-        { padding: 56, duration: 0 }
-      );
-
       // 5. Tasks GeoJSON source and layers
       mapInstance.addSource('tasks', {
         type: 'geojson',
@@ -695,31 +701,49 @@ export default function MapLibrePlanViewer({
         }
       });
 
-      setIsLoading(false);
+      // Reveal the viewer as soon as the visible `plan-tiles` have loaded via HTTP 206 Range requests
+      const handleSourceData = (e: maplibregl.MapSourceDataEvent) => {
+        if (e.sourceId === 'plan-tiles' && e.isSourceLoaded) {
+          setIsLoading(false);
+          mapInstance.off('sourcedata', handleSourceData);
+        }
+      };
+      mapInstance.on('sourcedata', handleSourceData);
 
-      // Start smart background prefetch of the complete .pmtiles archive into IndexedDB
-      // if it is not already served from a local Blob.
-      if (!hybridSource.isUsingLocalBlob()) {
-        cancelBackgroundPrefetch = schedulePlanBackgroundPrefetch({
-          documentId: resolvedDocumentId,
-          pmtilesUrl,
-          token,
-          metadata,
-          hybridSource,
-          onStatusChange: (status) => {
-            if (status === 'prefetching') {
-              setCacheStatus('prefetching');
-            } else if (status === 'offline-ready') {
-              setCacheStatus('offline-ready');
+      // Fallback timer in case `sourcedata` fires before listener attachment (e.g. in unit tests or cached blob)
+      loadingFallbackTimer = setTimeout(() => {
+        setIsLoading(false);
+      }, 600);
+
+      // Wait until the initial visible viewport tiles have finished rendering ('idle')
+      // BEFORE starting the background full-file prefetch into IndexedDB.
+      mapInstance.once('idle', () => {
+        setIsLoading(false);
+        if (!hybridSource.isUsingLocalBlob()) {
+          cancelBackgroundPrefetch = schedulePlanBackgroundPrefetch({
+            documentId: resolvedDocumentId,
+            pmtilesUrl,
+            token,
+            metadata,
+            hybridSource,
+            onStatusChange: (status) => {
+              if (status === 'prefetching') {
+                setCacheStatus('prefetching');
+              } else if (status === 'offline-ready') {
+                setCacheStatus('offline-ready');
+              }
             }
-          }
-        });
-      }
+          });
+        }
+      });
     });
 
     map.current = mapInstance;
 
     return () => {
+      if (loadingFallbackTimer) {
+        clearTimeout(loadingFallbackTimer);
+      }
       cancelBackgroundPrefetch?.();
       mapInstance.remove();
       map.current = null;
@@ -815,7 +839,10 @@ export default function MapLibrePlanViewer({
       <div className="flex-1 w-full h-full relative" style={{ backgroundColor: CANVAS_BG_COLOR }}>
         <div className="w-full h-full" style={{ backgroundColor: CANVAS_BG_COLOR }} ref={mapContainer} />
         {(isLoading || errorMsg) && (
-          <div className="absolute inset-0 z-10 bg-slate-50 flex flex-col items-center justify-center text-slate-400">
+          <div
+            className="absolute inset-0 z-10 flex flex-col items-center justify-center text-slate-300"
+            style={{ backgroundColor: CANVAS_BG_COLOR }}
+          >
             {errorMsg ? (
               <div className="text-red-500 font-bold p-8 bg-white rounded shadow-lg text-center">
                 <div className="text-xl mb-2">Fehler beim Laden</div>
@@ -823,7 +850,7 @@ export default function MapLibrePlanViewer({
               </div>
             ) : (
               <>
-                <Loader2 size={48} className="animate-spin text-blue-500 mb-4" />
+                <Loader2 size={48} className="animate-spin text-blue-400 mb-4" />
                 <div className="text-lg font-medium tracking-wide">
                   Plan wird geladen...
                 </div>

@@ -13,6 +13,18 @@ dotenv.config();
 const app = express();
 const port = process.env.PORT || 3000;
 
+app.set('trust proxy', 1);
+
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  if (process.env.NODE_ENV === 'production' || req.secure || req.headers['x-forwarded-proto'] === 'https') {
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+    res.setHeader('Content-Security-Policy', 'upgrade-insecure-requests');
+  }
+  next();
+});
+
 app.use(cors());
 app.use(express.json());
 

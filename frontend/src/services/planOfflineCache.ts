@@ -291,6 +291,7 @@ export function schedulePlanBackgroundPrefetch(options: {
   let cancelled = false;
   let idleHandle: number | null = null;
   let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+  const abortController = new AbortController();
 
   const startDownload = async () => {
     if (cancelled) return;
@@ -311,7 +312,14 @@ export function schedulePlanBackgroundPrefetch(options: {
     if (!prefetchPromise) {
       prefetchPromise = (async () => {
         try {
-          const res = await fetch(pmtilesUrl, {
+          // IMPORTANT: Use a distinct query string (?prefetch=1) and `cache: 'no-store'`
+          // so Chromium's HTTP cache single-writer lock NEVER blocks concurrent HTTP 206
+          // Range requests from `FetchSource` while the background download is in flight.
+          const separator = pmtilesUrl.includes('?') ? '&' : '?';
+          const prefetchUrl = `${pmtilesUrl}${separator}prefetch=1`;
+          const res = await fetch(prefetchUrl, {
+            cache: 'no-store',
+            signal: abortController.signal,
             headers: token ? { Authorization: `Bearer ${token}` } : {}
           });
           if (!res.ok) {
@@ -323,7 +331,9 @@ export function schedulePlanBackgroundPrefetch(options: {
           }
           return await savePlanToCache(documentId, blob, metadata);
         } catch (err) {
-          console.warn(`Background prefetch for plan ${documentId} failed:`, err);
+          if (!abortController.signal.aborted) {
+            console.warn(`Background prefetch for plan ${documentId} failed:`, err);
+          }
           return null;
         } finally {
           activePrefetches.delete(documentId);
@@ -345,18 +355,22 @@ export function schedulePlanBackgroundPrefetch(options: {
     }
   };
 
-  if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
-    idleHandle = window.requestIdleCallback(() => {
+  // Wait 1200ms after the initial visible tiles have rendered before scheduling the idle prefetch,
+  // guaranteeing 100% of network bandwidth goes to immediate HTTP 206 Range tile rendering first.
+  timeoutHandle = setTimeout(() => {
+    if (cancelled) return;
+    if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+      idleHandle = window.requestIdleCallback(() => {
+        void startDownload();
+      }, { timeout: 2000 });
+    } else {
       void startDownload();
-    }, { timeout: 1500 });
-  } else {
-    timeoutHandle = setTimeout(() => {
-      void startDownload();
-    }, 300);
-  }
+    }
+  }, 1200);
 
   return () => {
     cancelled = true;
+    abortController.abort();
     if (idleHandle !== null && typeof window !== 'undefined' && 'cancelIdleCallback' in window) {
       window.cancelIdleCallback(idleHandle);
     }

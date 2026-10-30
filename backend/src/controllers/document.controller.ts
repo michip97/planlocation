@@ -252,7 +252,11 @@ export const getDocumentPmtiles = async (req: AuthRequest, res: Response) => {
       }
     }
 
-    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    if (req.query.prefetch === '1') {
+      res.setHeader('Cache-Control', 'no-store');
+    } else {
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    }
     res.setHeader('Content-Type', 'application/vnd.pmtiles');
     res.sendFile(pmtilesPath);
   } catch (error) {

@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import type { Project } from '../types';
-import { Plus, UploadCloud, ChevronRight, Download, Trash2, CheckCircle2, Cloud, FileText, QrCode } from 'lucide-react';
+import { Plus, UploadCloud, ChevronRight, Download, Trash2, CheckCircle2, Cloud, FileText, QrCode, Loader2 } from 'lucide-react';
 import QRCodeModal from '../components/QRCodeModal';
 import Navbar from '../components/Navbar';
 import {
@@ -12,10 +12,17 @@ import {
   getCachedProjectDetails
 } from '../utils/offlineCache';
 
+interface UploadStatus {
+  progress: number;
+  phase: 'uploading' | 'tiling' | 'done';
+  filename: string;
+}
+
 export default function Dashboard() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [offlineRegistry, setOfflineRegistry] = useState<string[]>([]);
   const [downloadingProjects, setDownloadingProjects] = useState<Record<string, number>>({});
+  const [uploadingProjects, setUploadingProjects] = useState<Record<string, UploadStatus>>({});
   const [loading, setLoading] = useState(true);
   const [qrModal, setQrModal] = useState<{url: string, title: string} | null>(null);
   const [isOnline, setIsOnline] = useState<boolean>(navigator.onLine);
@@ -23,11 +30,50 @@ export default function Dashboard() {
 
   const token = localStorage.getItem('token');
 
+  const handleLogout = useCallback(() => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    navigate('/login');
+  }, [navigate]);
+
+  const fetchProjects = useCallback(async () => {
+    if (navigator.onLine) {
+      try {
+        const response = await axios.get('/api/projects', {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        setProjects(response.data);
+      } catch (error) {
+        console.error('Failed to fetch projects', error);
+        if (axios.isAxiosError(error) && error.response?.status === 401) {
+          handleLogout();
+        }
+      } finally {
+        setLoading(false);
+      }
+    } else {
+      // If offline, only load projects from the offline registry
+      const registry = await getOfflineProjectsRegistry();
+      const offlineProjs: Project[] = [];
+      for (const id of registry) {
+        const cachedProj = await getCachedProjectDetails(id);
+        if (cachedProj) offlineProjs.push(cachedProj);
+      }
+      setProjects(offlineProjs);
+      setLoading(false);
+    }
+  }, [token, handleLogout]);
+
+  const loadOfflineRegistry = useCallback(async () => {
+    const registry = await getOfflineProjectsRegistry();
+    setOfflineRegistry(registry);
+  }, []);
+
   // Handle Online/Offline Status
   useEffect(() => {
     const handleOnline = () => {
       setIsOnline(true);
-      fetchProjects();
+      void fetchProjects();
     };
     const handleOffline = () => setIsOnline(false);
 
@@ -38,60 +84,21 @@ export default function Dashboard() {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
-  }, []);
+  }, [fetchProjects]);
 
   useEffect(() => {
     if (!token) {
       navigate('/login');
       return;
     }
-    fetchProjects();
-    loadOfflineRegistry();
-  }, [navigate, token]);
-
-  const fetchProjects = async () => {
-    if (navigator.onLine) {
-        try {
-          const response = await axios.get('/api/projects', {
-            headers: { Authorization: `Bearer ${token}` }
-          });
-          setProjects(response.data);
-        } catch (error) {
-          console.error('Failed to fetch projects', error);
-          if (axios.isAxiosError(error) && error.response?.status === 401) {
-            handleLogout();
-          }
-        } finally {
-          setLoading(false);
-        }
-    } else {
-        // If offline, only load projects from the offline registry
-        const registry = await getOfflineProjectsRegistry();
-        const offlineProjs: Project[] = [];
-        for (const id of registry) {
-            const cachedProj = await getCachedProjectDetails(id);
-            if (cachedProj) offlineProjs.push(cachedProj);
-        }
-        setProjects(offlineProjs);
-        setLoading(false);
-    }
-  };
-
-  const loadOfflineRegistry = async () => {
-    const registry = await getOfflineProjectsRegistry();
-    setOfflineRegistry(registry);
-  };
-
-  const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    navigate('/login');
-  };
+    void fetchProjects();
+    void loadOfflineRegistry();
+  }, [navigate, token, fetchProjects, loadOfflineRegistry]);
 
   const handleCreateProject = async () => {
     if (!navigator.onLine) {
-        alert("Projekte können nur online erstellt werden.");
-        return;
+      alert("Projekte können nur online erstellt werden.");
+      return;
     }
     const name = prompt('Name des neuen Projekts:');
     if (!name) return;
@@ -101,18 +108,20 @@ export default function Dashboard() {
         { name, description: 'Neues Architekturprojekt' },
         { headers: { Authorization: `Bearer ${token}` }}
       );
-      fetchProjects();
-    } catch (error) {
+      await fetchProjects();
+    } catch (err) {
+      console.error(err);
       alert('Fehler beim Erstellen des Projekts');
     }
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, projectId: string) => {
     if (!navigator.onLine) {
-        alert("Dateien können nur online hochgeladen werden.");
-        return;
+      alert("Dateien können nur online hochgeladen werden.");
+      return;
     }
     const file = e.target.files?.[0];
+    e.target.value = '';
     if (!file) return;
 
     if (file.type !== 'application/pdf') {
@@ -123,15 +132,88 @@ export default function Dashboard() {
     const formData = new FormData();
     formData.append('file', file);
 
+    setUploadingProjects(prev => ({
+      ...prev,
+      [projectId]: { progress: 2, phase: 'uploading', filename: file.name }
+    }));
+
+    let tilingTimer: ReturnType<typeof setInterval> | null = null;
+
     try {
       await axios.post(`/api/documents/project/${projectId}`, formData, {
         headers: {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'multipart/form-data'
+        },
+        onUploadProgress: (progressEvent) => {
+          const total = progressEvent.total || file.size || 1;
+          const rawRatio = Math.min(1, Math.max(0, progressEvent.loaded / total));
+
+          if (rawRatio < 1) {
+            // Scale HTTP upload phase from 2% to 75%
+            const scaledProgress = Math.max(2, Math.round(rawRatio * 75));
+            setUploadingProjects(prev => ({
+              ...prev,
+              [projectId]: {
+                progress: scaledProgress,
+                phase: 'uploading',
+                filename: file.name
+              }
+            }));
+          } else if (!tilingTimer) {
+            // File bytes have arrived at server; backend is now rendering WebP tiles & packing .pmtiles in /dev/shm
+            setUploadingProjects(prev => ({
+              ...prev,
+              [projectId]: {
+                progress: 78,
+                phase: 'tiling',
+                filename: file.name
+              }
+            }));
+
+            tilingTimer = setInterval(() => {
+              setUploadingProjects(prev => {
+                const current = prev[projectId];
+                if (!current || current.phase !== 'tiling') return prev;
+                const nextProgress = Math.min(96, current.progress + 2);
+                return {
+                  ...prev,
+                  [projectId]: { ...current, progress: nextProgress }
+                };
+              });
+            }, 250);
+          }
         }
       });
-      fetchProjects();
+
+      if (tilingTimer) {
+        clearInterval(tilingTimer);
+        tilingTimer = null;
+      }
+
+      setUploadingProjects(prev => ({
+        ...prev,
+        [projectId]: { progress: 100, phase: 'done', filename: file.name }
+      }));
+
+      await fetchProjects();
+
+      setTimeout(() => {
+        setUploadingProjects(prev => {
+          const next = { ...prev };
+          delete next[projectId];
+          return next;
+        });
+      }, 450);
     } catch (error) {
+      if (tilingTimer) {
+        clearInterval(tilingTimer);
+      }
+      setUploadingProjects(prev => {
+        const next = { ...prev };
+        delete next[projectId];
+        return next;
+      });
       alert('Fehler beim Hochladen der Datei.');
       console.error(error);
     }
@@ -139,8 +221,8 @@ export default function Dashboard() {
 
   const handleDownloadOffline = async (project: Project) => {
     if (!token || !navigator.onLine) {
-        alert("Sie müssen online sein, um Projekte herunterzuladen.");
-        return;
+      alert("Sie müssen online sein, um Projekte herunterzuladen.");
+      return;
     }
     setDownloadingProjects(prev => ({ ...prev, [project.id]: 0 }));
 
@@ -155,9 +237,10 @@ export default function Dashboard() {
           delete next[project.id];
           return next;
         });
-        loadOfflineRegistry();
+        void loadOfflineRegistry();
       }, 500);
-    } catch (e) {
+    } catch (err) {
+      console.error(err);
       alert("Fehler beim Herunterladen des Projekts für den Offline-Modus.");
       setDownloadingProjects(prev => {
         const next = { ...prev };
@@ -173,7 +256,7 @@ export default function Dashboard() {
       await loadOfflineRegistry();
       // If we are currently offline, removing it should also remove it from view
       if (!isOnline) {
-         fetchProjects();
+        void fetchProjects();
       }
     }
   };
@@ -228,20 +311,53 @@ export default function Dashboard() {
               const isOffline = offlineRegistry.includes(project.id);
               const downloadProgress = downloadingProjects[project.id];
               const isDownloading = downloadProgress !== undefined;
+              const uploadStatus = uploadingProjects[project.id];
+              const isUploading = uploadStatus !== undefined;
 
               return (
                 <div key={project.id} className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col hover:shadow-md transition-shadow relative">
 
                   {isDownloading && (
-                    <div className="absolute inset-0 bg-white/80 z-20 flex flex-col items-center justify-center p-6 text-center backdrop-blur-sm">
+                    <div className="absolute inset-0 bg-white/85 z-20 flex flex-col items-center justify-center p-6 text-center backdrop-blur-sm">
+                      <Loader2 size={28} className="animate-spin text-blue-600 mb-2" />
                       <div className="text-slate-800 font-medium mb-2">Lade für Offline-Nutzung...</div>
-                      <div className="w-full bg-slate-200 rounded-full h-2 mb-2">
+                      <div className="w-full bg-slate-200 rounded-full h-2.5 mb-2">
                         <div
-                          className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                          className="bg-blue-600 h-2.5 rounded-full transition-all duration-300"
                           style={{ width: `${Math.round(downloadProgress)}%` }}
                         ></div>
                       </div>
-                      <div className="text-sm text-slate-500">{Math.round(downloadProgress)}%</div>
+                      <div className="text-sm font-semibold text-slate-600">{Math.round(downloadProgress)}%</div>
+                    </div>
+                  )}
+
+                  {isUploading && (
+                    <div className="absolute inset-0 bg-white/90 z-20 flex flex-col items-center justify-center p-6 text-center backdrop-blur-sm">
+                      {uploadStatus.phase === 'done' ? (
+                        <CheckCircle2 size={32} className="text-emerald-600 mb-2" />
+                      ) : (
+                        <Loader2 size={32} className="animate-spin text-blue-600 mb-2" />
+                      )}
+                      <div className="text-slate-800 font-semibold mb-1">
+                        {uploadStatus.phase === 'uploading' && 'PDF wird hochgeladen...'}
+                        {uploadStatus.phase === 'tiling' && 'Kacheln (.pmtiles) werden generiert...'}
+                        {uploadStatus.phase === 'done' && 'Plan erfolgreich verarbeitet!'}
+                      </div>
+                      <div className="text-xs text-slate-500 truncate max-w-full px-2 mb-3">
+                        {uploadStatus.filename}
+                      </div>
+                      <div className="w-full bg-slate-200 rounded-full h-2.5 mb-2 overflow-hidden">
+                        <div
+                          className={`h-2.5 rounded-full transition-all duration-200 ${
+                            uploadStatus.phase === 'done' ? 'bg-emerald-600' : 'bg-blue-600'
+                          }`}
+                          style={{ width: `${Math.round(uploadStatus.progress)}%` }}
+                        ></div>
+                      </div>
+                      <div className="text-xs font-semibold text-slate-600">
+                        {Math.round(uploadStatus.progress)}%
+                        {uploadStatus.phase === 'tiling' && ' · Hochauflösende Zoomstufen im RAM'}
+                      </div>
                     </div>
                   )}
 
@@ -290,12 +406,25 @@ export default function Dashboard() {
                             <ChevronRight size={16} className="text-slate-400 group-hover:text-blue-500 flex-shrink-0" />
                           </button>
                         ))}
+                        <label className={`mt-1 bg-white border border-dashed border-slate-300 rounded-lg px-3 py-2 flex items-center justify-center space-x-2 transition-colors
+                           ${isOnline && !isUploading ? 'cursor-pointer hover:bg-slate-50 hover:border-blue-400' : 'opacity-50 cursor-not-allowed'}
+                        `}>
+                          <UploadCloud size={15} className={isOnline ? 'text-blue-600' : 'text-slate-400'} />
+                          <span className="text-xs font-medium text-slate-600">Weiteren Plan (PDF) hochladen</span>
+                          <input
+                            type="file"
+                            accept=".pdf"
+                            className="hidden"
+                            disabled={!isOnline || isUploading}
+                            onChange={(e) => handleFileUpload(e, project.id)}
+                          />
+                        </label>
                       </div>
                     ) : (
                       <div className="text-center py-2">
                         <p className="text-sm text-slate-500 mb-3">Kein Plan vorhanden</p>
                         <label className={`bg-white border border-dashed border-slate-300 rounded-lg px-4 py-3 flex items-center justify-center space-x-2 transition-colors
-                           ${isOnline ? 'cursor-pointer hover:bg-slate-50 hover:border-blue-400' : 'opacity-50 cursor-not-allowed'}
+                           ${isOnline && !isUploading ? 'cursor-pointer hover:bg-slate-50 hover:border-blue-400' : 'opacity-50 cursor-not-allowed'}
                         `}>
                           <UploadCloud size={18} className={isOnline ? 'text-blue-600' : 'text-slate-400'} />
                           <span className="text-sm font-medium text-slate-700">PDF hochladen</span>
@@ -303,7 +432,7 @@ export default function Dashboard() {
                             type="file"
                             accept=".pdf"
                             className="hidden"
-                            disabled={!isOnline}
+                            disabled={!isOnline || isUploading}
                             onChange={(e) => handleFileUpload(e, project.id)}
                           />
                         </label>
