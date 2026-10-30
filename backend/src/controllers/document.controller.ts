@@ -45,7 +45,7 @@ export const uploadDocument = async (req: AuthRequest, res: Response) => {
     });
 
     // Generate tiles synchronously
-    const generateTilesScript = path.join(__dirname, '../../../../scripts/generate-tiles.sh');
+    const generateTilesScript = path.join(__dirname, '../../../scripts/generate-tiles.sh');
     const inputPdf = file.path;
     const tilesDirName = file.filename.replace('.pdf', '');
     const outputDir = path.join(__dirname, '../../uploads/tiles', tilesDirName);
@@ -149,7 +149,7 @@ export const getDocumentTilesMetadata = async (req: AuthRequest, res: Response) 
 
       console.log('Tiles not found. Generating lazily...');
       tileGenerationLocks[document.id] = true;
-      const generateTilesScript = path.join(__dirname, '../../../../scripts/generate-tiles.sh');
+      const generateTilesScript = path.join(__dirname, '../../../scripts/generate-tiles.sh');
       try {
         const { execSync } = require('child_process');
         execSync(`bash "${generateTilesScript}" "${inputPdf}" "${outputDir}"`, { stdio: 'inherit' });
