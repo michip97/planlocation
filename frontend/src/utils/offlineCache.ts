@@ -94,20 +94,9 @@ export const downloadProjectForOffline = async (
       await cacheTasks(project.id, doc.id, tasksRes.data);
       onProgress(baseProgress + (progressPerDoc * 0.2)); // Tasks downloaded
 
-      // Fetch PDF Blob with onDownloadProgress for accurate tracking of large files
-      const pdfRes = await axios.get(`/api/documents/${doc.id}/file`, {
-        headers: { Authorization: `Bearer ${token}` },
-        responseType: 'blob',
-        onDownloadProgress: (progressEvent) => {
-          if (progressEvent.total) {
-            const percentCompleted = progressEvent.loaded / progressEvent.total;
-            const docPdfProgress = progressPerDoc * 0.8 * percentCompleted; // PDF is 80% of the document work
-            onProgress(baseProgress + (progressPerDoc * 0.2) + docPdfProgress);
-          }
-        }
-      });
-
-      await cachePdfBlob(doc.id, pdfRes.data);
+      // We no longer download the monolithic PDF Blob for offline use
+      // With the new Tiling Pipeline via MapLibre, tiles will be cached
+      // dynamically by the Service Worker when requested during online browsing.
     }
 
     onProgress(100);

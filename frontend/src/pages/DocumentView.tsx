@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import PDFViewer from '../components/PDFViewer';
-import TaskMarker from '../components/TaskMarker';
+import MapLibrePlanViewer from '../components/MapLibrePlanViewer';
 import TaskSidebar from '../components/TaskSidebar';
 import type { Task, Project, Document } from '../types';
 import { ArrowLeft, Cloud, CloudOff } from 'lucide-react';
@@ -144,18 +143,14 @@ export default function DocumentView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, documentId, token, navigate]);
 
-  const handlePdfClick = async (e: React.MouseEvent, pageNumber: number) => {
-    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    const x = (e.clientX - rect.left) / rect.width;
-    const y = (e.clientY - rect.top) / rect.height;
-
+  const handlePlanClick = async ({ x, y }: { x: number; y: number }) => {
     const newTask: Task = {
       id: uuidv4(),
       title: 'Neue Pendenz',
       description: '',
       projectId: projectId || '',
       documentId: documentId || '',
-      page: pageNumber,
+      page: currentPage,
       position: { x, y },
       status: 'Offen',
       priority: 'Normal',
@@ -263,22 +258,13 @@ export default function DocumentView() {
 
         <div className="flex-1 relative overflow-hidden">
           {pdfUrl ? (
-            <PDFViewer
-              url={pdfUrl}
-              onClick={handlePdfClick}
-            >
-              {formattedTasks
-                .filter(t => t.page === currentPage)
-                .map(task => (
-                  <TaskMarker
-                    key={task.id}
-                    task={task}
-                    isActive={activeTask?.id === task.id}
-                    onClick={handleTaskClick}
-                  />
-                ))
-              }
-            </PDFViewer>
+            <MapLibrePlanViewer
+              url={`/api/documents/${documentId}/file`}
+              onPlanClick={handlePlanClick}
+              onPinClick={handleTaskClick}
+              tasks={formattedTasks.filter(t => t.page === currentPage)}
+              activeTaskId={activeTask?.id || null}
+            />
           ) : (
             <div className="w-full h-full flex flex-col items-center justify-center bg-slate-900 text-slate-400">
               {isOnline ? (
